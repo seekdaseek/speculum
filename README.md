@@ -75,7 +75,10 @@ Verified by running, not asserted:
   - the subgraph indexes from that block; starting from zero would crawl the whole chain
   - an earlier deployment at `0x00d6ceec3a85b0f6288df0005e6649f923e472c4` (block 46426233) is superseded and left on chain. Its ABI contains a function named `declare`, which no subgraph can compile against, which is why it was replaced.
 - Ledger's own ESM build does not resolve under Node: `lib-es` contains extensionless relative imports and `import` throws `ERR_MODULE_NOT_FOUND`. Their packages must be loaded through `createRequire`. Reproduced both ways before working around it.
-- Subgraph: **built and compiling**, not yet deployed to Studio. Schema, manifest and AssemblyScript mappings compile to WASM against the real ABI. Target network is Base Sepolia. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
+- Subgraph: **deployed and synced**, v0.0.1 on Subgraph Studio, Base Sepolia.
+  - query endpoint `https://api.studio.thegraph.com/query/1758736/speculum/v0.0.1`
+  - build `QmcPcbZCirWiJik1zxGbhLCw8RSGwYTRWgH6Lx2X6UhHtZ`
+  - status SYNCED, 100%, **zero entities** — nothing has called `record()` on the contract yet, so there is nothing to index. The pipeline works; it is empty on purpose rather than broken. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
 
 ## Two defects the subgraph build found
 

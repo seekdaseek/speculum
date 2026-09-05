@@ -10,6 +10,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@ledgerhq/hw-app-eth": "^7.8.16",
+    "@ledgerhq/hw-transport-node-hid": "^6.33.5",
     "viem": "^2.56.3"
   },
   "type": "module"

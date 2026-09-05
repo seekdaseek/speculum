@@ -88,10 +88,8 @@ try {
   const msg = String(err.message ?? err);
   const statusText = err.statusCode ? ` statusCode 0x${err.statusCode.toString(16)}` : '';
   console.log(`\nsignature did not complete:${statusText}\n  ${msg}`);
-  const matched = /denied|rejected|0x6985/i.test(msg);
-  console.log(matched
-    ? '  the port would classify this as: declined on device  (correct)'
-    : '  the port would classify this as: device error  — if you pressed reject, the matcher is WRONG and needs this exact string');
+  console.log(`  the port classifies this as: ${LedgerPort.classify(err)}`);
+  console.log('  if you pressed reject and this does not say "declined on device", the matcher is wrong.');
 } finally {
   await transport.close();
 }

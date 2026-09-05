@@ -68,7 +68,11 @@ Verified by running, not asserted:
   - `signPersonalMessage` is deterministic: the same message and key produce a byte-identical signature every run. An approval signature is therefore replayable as a string, which is why the gate stores approvals with single use and expiry rather than treating a signature as authority.
 - Simulation transport: `eth_simulateV1` confirmed working on `ethereum-rpc.publicnode.com` and `eth.drpc.org`, returning the shape the parser expects with `gasUsed` present. `cloudflare-eth.com` answers method not found. Support is not universal, so the endpoint matters.
 - Contract **compiled**, solc 0.8.36, optimizer on at 200 runs. Measured, not estimated: 961 bytes of bytecode, 186,830 gas to deploy, and `record()` at **3,337 gas**. That last number is the design argument: storing a verdict rather than emitting it would cost roughly six times more for data no contract reads.
-- Contract has **not** been deployed. No address exists.
+- Contract **deployed to Base Sepolia**, verified by reading the code back on chain:
+  - address `0x00d6ceec3a85b0f6288df0005e6649f923e472c4`
+  - deployment block `46426233`, chain `84532`
+  - 254,932 gas used, 933 bytes of runtime code
+  - the subgraph indexes from that block; starting from zero would crawl the whole chain
 - Ledger's own ESM build does not resolve under Node: `lib-es` contains extensionless relative imports and `import` throws `ERR_MODULE_NOT_FOUND`. Their packages must be loaded through `createRequire`. Reproduced both ways before working around it.
 - Subgraph: **not built**. Target network is Base Sepolia. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
 

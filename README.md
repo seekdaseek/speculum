@@ -69,12 +69,30 @@ Verified by running, not asserted:
 - Simulation transport: `eth_simulateV1` confirmed working on `ethereum-rpc.publicnode.com` and `eth.drpc.org`, returning the shape the parser expects with `gasUsed` present. `cloudflare-eth.com` answers method not found. Support is not universal, so the endpoint matters.
 - Contract **compiled**, solc 0.8.36, optimizer on at 200 runs. Measured, not estimated: 961 bytes of bytecode, 186,830 gas to deploy, and `record()` at **3,337 gas**. That last number is the design argument: storing a verdict rather than emitting it would cost roughly six times more for data no contract reads.
 - Contract **deployed to Base Sepolia**, verified by reading the code back on chain:
-  - address `0x00d6ceec3a85b0f6288df0005e6649f923e472c4`
-  - deployment block `46426233`, chain `84532`
+  - address `0xb71db47937d8ddbe1fff208cf5da2727c3f90d9b`
+  - deployment block `46426715`, chain `84532`
   - 254,932 gas used, 933 bytes of runtime code
   - the subgraph indexes from that block; starting from zero would crawl the whole chain
+  - an earlier deployment at `0x00d6ceec3a85b0f6288df0005e6649f923e472c4` (block 46426233) is superseded and left on chain. Its ABI contains a function named `declare`, which no subgraph can compile against, which is why it was replaced.
 - Ledger's own ESM build does not resolve under Node: `lib-es` contains extensionless relative imports and `import` throws `ERR_MODULE_NOT_FOUND`. Their packages must be loaded through `createRequire`. Reproduced both ways before working around it.
-- Subgraph: **not built**. Target network is Base Sepolia. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
+- Subgraph: **built and compiling**, not yet deployed to Studio. Schema, manifest and AssemblyScript mappings compile to WASM against the real ABI. Target network is Base Sepolia. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
+
+## Two defects the subgraph build found
+
+Neither was visible by reading code. Both came out of running the compiler.
+
+**`declare` is a reserved word in AssemblyScript.** The Graph's codegen emits a
+binding method per external contract function, so a contract with a function
+named `declare` cannot have a subgraph generated against it at all — the
+compiler fails on its own generated file. The function is now `declareIntent`,
+and `override_` is now `recordOverride` for the same reason. This is a contract
+defect, not a tooling quirk: an ABI that cannot be indexed by the ecosystem's
+main indexer is broken.
+
+**`uint32` crosses graph-ts's BigInt threshold and `uint8` does not.** The
+findings bitfield arrives as `BigInt` while the level arrives as `i32`, so the
+bitfield is narrowed once at the handler boundary. Only 15 bits are ever used,
+so the narrowing is safe.
 
 ## Why the approval binds to bytes
 

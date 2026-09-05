@@ -1,0 +1,113 @@
+# speculum — subgraph schema
+#
+# The question this answers is not what happened, but which agents say one
+# thing and do another, and how often. Raw events do not answer that; running
+# aggregates on the agent do.
+
+type Agent @entity(immutable: false) {
+  id: Bytes!
+  firstSeen: BigInt!
+  lastSeen: BigInt!
+
+  checks: BigInt!
+  passed: BigInt!
+  blocked: BigInt!
+  refused: BigInt!
+
+  """
+  Blocked plus refused over total. Stored rather than computed at query time,
+  because sorting agents by it is the entire point of this entity.
+  """
+  divergenceRate: BigDecimal!
+
+  """
+  How many of this agent's blocks a human then approved anyway. A high number
+  means the gate is too strict. A low one means it is catching real problems.
+  """
+  overridden: BigInt!
+
+  declarations: BigInt!
+
+  """
+  Checks recorded with no prior declaration from this agent. An intent
+  published only after the calldata exists proves nothing, because it could
+  have been written to fit.
+  """
+  undeclared: BigInt!
+
+  checkList: [Check!]! @derivedFrom(field: "agent")
+}
+
+type Check @entity(immutable: true) {
+  id: Bytes!
+  agent: Agent!
+  intentHash: Bytes!
+  deedHash: Bytes!
+  target: Bytes!
+
+  "PASS, BLOCK or REFUSE"
+  level: String!
+  levelCode: Int!
+
+  "Divergence class names, decoded from the bitfield the contract emits."
+  findings: [String!]!
+  findingBits: Int!
+
+  "True when any finding is one that cannot be undone once mined."
+  irreversible: Boolean!
+
+  "Whether this agent had declared any intent before this check was recorded."
+  declaredFirst: Boolean!
+
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+type Declaration @entity(immutable: true) {
+  id: Bytes!
+  agent: Agent!
+  intentHash: Bytes!
+  nonce: BigInt!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
+
+type Override @entity(immutable: true) {
+  id: Bytes!
+  deedHash: Bytes!
+  approver: Bytes!
+
+  "The check this override answers, when one is known."
+  check: Check
+
+  """
+  True when a human approved a deed the gate never checked. That means
+  something reached a signer around the gate, which is a finding in itself and
+  the reason this field exists.
+  """
+  unchecked: Boolean!
+
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
+
+"One row of counters, so a dashboard need not scan every Check."
+type Totals @entity(immutable: false) {
+  id: Bytes!
+  checks: BigInt!
+  passed: BigInt!
+  blocked: BigInt!
+  refused: BigInt!
+  overrides: BigInt!
+  uncheckedOverrides: BigInt!
+  agents: BigInt!
+}
+
+"Running count per divergence class, so what goes wrong most is one query."
+type FindingCount @entity(immutable: false) {
+  id: String!
+  bit: Int!
+  count: BigInt!
+  irreversible: Boolean!
+}

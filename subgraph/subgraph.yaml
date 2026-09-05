@@ -1,0 +1,37 @@
+specVersion: 1.0.0
+description: Records where AI agents' declared intent diverged from the transaction they were about to sign.
+repository: https://github.com/seekdaseek/speculum
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: Speculum
+    network: base-sepolia
+    source:
+      address: "0xb71db47937d8ddbe1fff208cf5da2727c3f90d9b"
+      abi: Speculum
+      # The block the contract was deployed in, read off the receipt. Starting
+      # from zero would crawl the whole chain to reach the first event.
+      startBlock: 46426715
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Agent
+        - Check
+        - Declaration
+        - Override
+        - Totals
+        - FindingCount
+      abis:
+        - name: Speculum
+          file: ./abis/Speculum.json
+      eventHandlers:
+        - event: Checked(indexed address,indexed bytes32,indexed bytes32,uint8,uint32,address)
+          handler: handleChecked
+        - event: Declared(indexed address,indexed bytes32,uint64)
+          handler: handleDeclared
+        - event: Overridden(indexed bytes32,indexed address)
+          handler: handleOverridden
+      file: ./src/mapping.ts

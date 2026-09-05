@@ -56,12 +56,23 @@ REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than 
 
 Verified by running, not asserted:
 
-- 46 tests pass, 0 fail. `npm test`
+- 92 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
-- Contract compiles as written here but has **not** been deployed. No address exists yet.
-- Simulation against live chain state: **not built**. The current engine compares declaration against decoded calldata only. Balance-delta checks need an RPC and are the next piece.
-- Ledger confirmation path: **not built**.
+- Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Never run against a live node.**
+- Gate and approval binding: built and tested. An approval commits to chainId, target, value and calldata; changing one argument, adding value, or switching chain voids it. Single use, with expiry.
+- Ledger confirmation port: written against `@ledgerhq/hw-app-eth` 7.8.16 and `@ledgerhq/hw-transport-node-hid` 6.33.5. **Never executed against hardware.** Every claim about device behaviour is untested.
+- Contract compiles as written but has **not** been deployed. No address exists.
 - Subgraph: **not built**.
+
+## Why the approval binds to bytes
+
+A human confirmation that does not commit to specific bytes is worse than no
+confirmation, because it manufactures a record of consent for something nobody
+saw. Approvals are keyed by a hash over chainId, target, value and the full
+calldata, and `authorise()` re-derives that hash from the transaction being sent
+rather than trusting one handed to it. A caller who supplies both a transaction
+and a hash is a caller who can supply a matching pair describing different
+bytes.
 
 ## Run it
 

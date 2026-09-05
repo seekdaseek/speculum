@@ -63,12 +63,14 @@ Verified by running, not asserted:
 - Ledger confirmation port: **run against real hardware.** `@ledgerhq/hw-app-eth` 7.8.16, `@ledgerhq/hw-transport-node-hid` 6.33.5, Ethereum app on device. Measured, not assumed:
   - `getAddress` returns in ~470ms with no prompt on the device.
   - `signPersonalMessage` took 14,435ms and required a physical confirmation. The human-in-the-loop property is real, not asserted.
+  - Rejecting on the device returns `0x6985`, "Condition of use not satisfied". The classifier reports it as *declined on device*. Confirmed by pressing reject on real hardware, not read off a table.
   - Status code `0x6d00` is returned by the dashboard when the Ethereum app is not open. It is not a refusal, and classifying it as one would record a human decision that never happened.
+  - `signPersonalMessage` is deterministic: the same message and key produce a byte-identical signature every run. An approval signature is therefore replayable as a string, which is why the gate stores approvals with single use and expiry rather than treating a signature as authority.
 - Simulation transport: `eth_simulateV1` confirmed working on `ethereum-rpc.publicnode.com` and `eth.drpc.org`, returning the shape the parser expects with `gasUsed` present. `cloudflare-eth.com` answers method not found. Support is not universal, so the endpoint matters.
 - Contract **compiled**, solc 0.8.36, optimizer on at 200 runs. Measured, not estimated: 961 bytes of bytecode, 186,830 gas to deploy, and `record()` at **3,337 gas**. That last number is the design argument: storing a verdict rather than emitting it would cost roughly six times more for data no contract reads.
 - Contract has **not** been deployed. No address exists.
 - Ledger's own ESM build does not resolve under Node: `lib-es` contains extensionless relative imports and `import` throws `ERR_MODULE_NOT_FOUND`. Their packages must be loaded through `createRequire`. Reproduced both ways before working around it.
-- Subgraph: **not built**.
+- Subgraph: **not built**. Target network is Base Sepolia. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
 
 ## Why the approval binds to bytes
 

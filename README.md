@@ -65,7 +65,8 @@ Verified by running, not asserted:
   - `signPersonalMessage` took 14,435ms and required a physical confirmation. The human-in-the-loop property is real, not asserted.
   - Status code `0x6d00` is returned by the dashboard when the Ethereum app is not open. It is not a refusal, and classifying it as one would record a human decision that never happened.
 - Simulation transport: `eth_simulateV1` confirmed working on `ethereum-rpc.publicnode.com` and `eth.drpc.org`, returning the shape the parser expects with `gasUsed` present. `cloudflare-eth.com` answers method not found. Support is not universal, so the endpoint matters.
-- Contract compiles as written but has **not** been deployed. No address exists.
+- Contract **compiled**, solc 0.8.36, optimizer on at 200 runs. Measured, not estimated: 961 bytes of bytecode, 186,830 gas to deploy, and `record()` at **3,337 gas**. That last number is the design argument: storing a verdict rather than emitting it would cost roughly six times more for data no contract reads.
+- Contract has **not** been deployed. No address exists.
 - Ledger's own ESM build does not resolve under Node: `lib-es` contains extensionless relative imports and `import` throws `ERR_MODULE_NOT_FOUND`. Their packages must be loaded through `createRequire`. Reproduced both ways before working around it.
 - Subgraph: **not built**.
 

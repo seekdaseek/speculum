@@ -4,7 +4,9 @@
   "description": "Checks whether an AI agent declared intent matches the transaction it is about to sign",
   "main": "index.js",
   "scripts": {
-    "test": "node test/compare.test.js && node test/onchain.test.js && node test/simulate.test.js && node test/gate.test.js"
+    "test": "node test/compare.test.js && node test/onchain.test.js && node test/simulate.test.js && node test/gate.test.js",
+    "compile": "node bin/compile.js",
+    "deploy": "node bin/deploy.js"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +14,7 @@
   "dependencies": {
     "@ledgerhq/hw-app-eth": "^7.8.16",
     "@ledgerhq/hw-transport-node-hid": "^6.33.5",
+    "solc": "^0.8.36",
     "viem": "^2.56.3"
   },
   "type": "module"

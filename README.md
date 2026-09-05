@@ -111,6 +111,40 @@ npm install
 npm test
 ```
 
+## AI attribution
+
+Claude Code wrote most of the code in this repository: the decoder, the
+comparison engine, the simulation layer, the gate, the Solidity contract, the
+subgraph schema and mappings, the probes, and the tests. That includes this
+file.
+
+What that did not cover is everything that made the claims in it true.
+
+Every fact recorded above came from running something on real hardware or a
+real network, and that was done by the repository owner, not by the model. The
+Ledger requires a physical confirmation and returns `0x6985` when refused:
+established by plugging in a device and pressing both buttons, then pressing
+reject. `eth_simulateV1` works on two endpoints and is missing on a third:
+established by probing five. The contract is live on Base Sepolia: funded and
+deployed by hand. None of that is knowable from writing code, and the model had
+asserted several of those things confidently before they were checked.
+
+Three errors were caught by the owner rather than by the tests. The contributor
+list still showed a co-author after the model had declared the history clean,
+because the model had verified commit messages instead of the surface a person
+actually looks at. An email address in the imported history was spotted as
+wrong. And the model claimed a dashboard setting had been switched when it had
+only observed its own client-side state, which the owner contradicted from what
+he could see on screen.
+
+The direction is also not the model's. The problem, the decision to build from
+scratch rather than extend an existing project, the choice of partner
+integrations, and the name are the owner's.
+
+The division worth stating plainly: the model drafted, the owner directed,
+executed and verified. Where those two disagreed, verification won, and this
+file was rewritten several times because of it.
+
 ## Licence
 
 MIT

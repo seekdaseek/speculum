@@ -50,7 +50,12 @@ contract Speculum {
 
     mapping(address => uint64) public nonces;
 
-    function declare(bytes32 intentHash) external returns (uint64 nonce) {
+    /// @dev Named declareIntent rather than declare because `declare` is a
+    ///      reserved word in AssemblyScript, and The Graph's codegen emits a
+    ///      binding method per external function. A contract function called
+    ///      `declare` makes it impossible to compile a subgraph against this
+    ///      ABI at all. Found by building the subgraph, not by reading docs.
+    function declareIntent(bytes32 intentHash) external returns (uint64 nonce) {
         nonce = ++nonces[msg.sender];
         emit Declared(msg.sender, intentHash, nonce);
     }
@@ -70,7 +75,9 @@ contract Speculum {
         emit Checked(msg.sender, intentHash, deedHash, level, findings, target);
     }
 
-    function override_(bytes32 deedHash) external {
+    /// @dev Likewise not named `override`, which is reserved in both Solidity
+    ///      and AssemblyScript.
+    function recordOverride(bytes32 deedHash) external {
         emit Overridden(deedHash, msg.sender);
     }
 }

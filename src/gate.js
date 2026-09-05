@@ -163,12 +163,35 @@ export class LedgerPort {
       );
       return sig ? address : null;
     } catch (err) {
-      // A refusal on the device and a broken cable both land here and they are
-      // not the same event. Neither approves anything, so both return null,
-      // but the caller is told which happened rather than being left to guess.
-      const denied = /denied|rejected|0x6985/i.test(String(err.message ?? err));
-      this.lastError = denied ? 'declined on device' : `device error: ${err.message ?? err}`;
+      // Several very different events land here and none of them approve
+      // anything, so all return null. But an operator staring at a stuck agent
+      // needs to know which one happened, and "device error" tells them
+      // nothing. The status codes below were observed against real hardware,
+      // not read off a table.
+      this.lastError = LedgerPort.classify(err);
       return null;
     }
+  }
+
+  /**
+   * Turn a device failure into something a human can act on.
+   *
+   * 0x6985 is a deliberate refusal and is the only one that means the human
+   * said no. 0x6d00 means the instruction is unknown to whatever app is
+   * currently open, which in practice means the Ethereum app is not open and
+   * the dashboard is answering instead. Treating that as a refusal would
+   * record a human decision that never happened.
+   */
+  static classify(err) {
+    const msg = String(err?.message ?? err);
+    const code = err?.statusCode;
+    if (code === 0x6985 || /denied|rejected|0x6985/i.test(msg)) return 'declined on device';
+    if (code === 0x6d00 || /INS_NOT_SUPPORTED|0x6d00/i.test(msg))
+      return 'wrong app open on device, the Ethereum app must be running';
+    if (code === 0x6511 || /no app|0x6511/i.test(msg)) return 'no app open on device';
+    if (code === 0x5515 || /locked|0x5515/i.test(msg)) return 'device is locked';
+    if (/cannot open|no device|not found/i.test(msg))
+      return 'device not reachable, check the cable and that Ledger Live is closed';
+    return `device error: ${msg}`;
   }
 }

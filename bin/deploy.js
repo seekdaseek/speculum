@@ -60,14 +60,30 @@ if (receipt.status !== 'success') {
 }
 
 // A receipt with an address is not proof there is code there. Check.
-const code = await pub.getBytecode({ address: receipt.contractAddress });
+//
+// But check with patience. Public endpoints load-balance across nodes, and the
+// one that answers this read is often not the one that answered the receipt,
+// so an immediate read can come back empty for a contract that deployed fine.
+// The first version of this script failed that way on a successful deploy and
+// reported it as a failure, which is worse than not checking at all: it says
+// something false about a thing that worked.
+let code = null;
+for (let attempt = 1; attempt <= 6; attempt++) {
+  code = await pub.getBytecode({ address: receipt.contractAddress });
+  if (code && code !== '0x') break;
+  if (attempt < 6) {
+    console.log(`  code not visible yet, retrying (${attempt}/5)`);
+    await new Promise((r) => setTimeout(r, 2000 * attempt));
+  }
+}
 if (!code || code === '0x') {
-  console.error(`no code at ${receipt.contractAddress} despite a successful receipt`);
+  console.error(`no code at ${receipt.contractAddress} after 6 reads over ~30s.`);
+  console.error('the receipt succeeded, so check a block explorer before assuming it failed.');
   process.exit(1);
 }
 
 console.log(`\naddress    ${receipt.contractAddress}`);
 console.log(`block      ${receipt.blockNumber}`);
 console.log(`gas used   ${receipt.gasUsed}`);
-console.log(`code size  ${(code.length - 2) / 2} bytes on chain`);
+console.log(`code size  ${(code.length - 2) / 2} bytes on chain (runtime; deployment bytecode is larger)`);
 console.log(`\nthe subgraph needs both the address and startBlock ${receipt.blockNumber}`);

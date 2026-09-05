@@ -1,0 +1,16 @@
+{
+  "name": "speculum",
+  "version": "1.0.0",
+  "description": "Checks whether an AI agent declared intent matches the transaction it is about to sign",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/compare.test.js && node test/onchain.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "viem": "^2.56.3"
+  },
+  "type": "module"
+}

@@ -56,12 +56,17 @@ REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than 
 
 Verified by running, not asserted:
 
-- 92 tests pass, 0 fail. `npm test`
+- 97 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
 - Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Never run against a live node.**
 - Gate and approval binding: built and tested. An approval commits to chainId, target, value and calldata; changing one argument, adding value, or switching chain voids it. Single use, with expiry.
-- Ledger confirmation port: written against `@ledgerhq/hw-app-eth` 7.8.16 and `@ledgerhq/hw-transport-node-hid` 6.33.5. **Never executed against hardware.** Every claim about device behaviour is untested.
+- Ledger confirmation port: **run against real hardware.** `@ledgerhq/hw-app-eth` 7.8.16, `@ledgerhq/hw-transport-node-hid` 6.33.5, Ethereum app on device. Measured, not assumed:
+  - `getAddress` returns in ~470ms with no prompt on the device.
+  - `signPersonalMessage` took 14,435ms and required a physical confirmation. The human-in-the-loop property is real, not asserted.
+  - Status code `0x6d00` is returned by the dashboard when the Ethereum app is not open. It is not a refusal, and classifying it as one would record a human decision that never happened.
+- Simulation transport: `eth_simulateV1` confirmed working on `ethereum-rpc.publicnode.com` and `eth.drpc.org`, returning the shape the parser expects with `gasUsed` present. `cloudflare-eth.com` answers method not found. Support is not universal, so the endpoint matters.
 - Contract compiles as written but has **not** been deployed. No address exists.
+- Ledger's own ESM build does not resolve under Node: `lib-es` contains extensionless relative imports and `import` throws `ERR_MODULE_NOT_FOUND`. Their packages must be loaded through `createRequire`. Reproduced both ways before working around it.
 - Subgraph: **not built**.
 
 ## Why the approval binds to bytes

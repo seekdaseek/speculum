@@ -160,6 +160,21 @@ const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 100n, reci
   check('message carries the reason', m.includes('wrong recipient'), true);
 }
 
+// -------------------- device failures are classified, not lumped together
+// A refusal and a wrong-app error are different events. Recording the second
+// as the first would log a human decision that never happened.
+{
+  const c = (code, message) => LedgerPort.classify(Object.assign(new Error(message), { statusCode: code }));
+  check('refusal recognised', c(0x6985, 'Ledger device: Condition of use not satisfied'), 'declined on device');
+  check('wrong app recognised', c(0x6d00, 'Ledger device: INS_NOT_SUPPORTED (0x6d00)'),
+    'wrong app open on device, the Ethereum app must be running');
+  check('locked device recognised', c(0x5515, 'Ledger device: Locked device'), 'device is locked');
+  check('wrong app is not a refusal',
+    c(0x6d00, 'INS_NOT_SUPPORTED') === 'declined on device', false);
+  check('unknown code falls through with its message',
+    c(0x1234, 'weird').startsWith('device error:'), true);
+}
+
 console.log(out.join('\n'));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

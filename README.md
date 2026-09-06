@@ -78,7 +78,9 @@ Verified by running, not asserted:
 - Subgraph: **deployed and synced**, v0.0.1 on Subgraph Studio, Base Sepolia.
   - query endpoint `https://api.studio.thegraph.com/query/1758736/speculum/v0.0.1`
   - build `QmcPcbZCirWiJik1zxGbhLCw8RSGwYTRWgH6Lx2X6UhHtZ`
-  - status SYNCED, 100%, **zero entities** — nothing has called `record()` on the contract yet, so there is nothing to index. The pipeline works; it is empty on purpose rather than broken. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
+  - **12 checks indexed** from two demo runs: 2 passed, 8 blocked, 2 refused, divergence rate 0.8333. RECIPIENT_MISMATCH is the most common finding at 4, and `irreversible` resolves true only for UNBOUNDED_APPROVAL and APPROVAL_FOR_ALL.
+  - that reconciliation is the proof the bitfield survives JavaScript to Solidity to AssemblyScript with no drift across 15 bit positions, which is the one thing here that could have been silently wrong without anything failing.
+  - 4 overrides, each one a physical confirmation on a Ledger that halted execution until it was tapped. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
 
 ## Two defects the subgraph build found
 
@@ -96,6 +98,72 @@ main indexer is broken.
 findings bitfield arrives as `BigInt` while the level arrives as `i32`, so the
 bitfield is narrowed once at the handler boundary. Only 15 bits are ever used,
 so the narrowing is safe.
+
+## A field that was always true
+
+The first version of the mappings hardcoded every override as `unchecked`,
+meaning "a human approved a deed the gate never saw". Overrides arrive keyed by
+deed hash while checks are keyed by log position, so connecting them needed an
+index that did not exist, and the code shipped with a comment explaining why it
+was not built rather than building it.
+
+While the contract had never been called this was invisible. The moment real
+data existed, every legitimate approval was reported as a gate bypass. A field
+that is always true carries no information and actively misleads, which is the
+exact failure this project exists to catch, reproduced inside it.
+
+Fixed with a `DeedIndex` from deed hash to check. The same absence had made
+`Agent.overridden` permanently zero, since nothing could increment it.
+
+The same round strengthened `declaredFirst`. It used to ask whether the agent
+had ever declared anything at all, which any agent passes after its first
+declaration. An `IntentIndex` now lets it ask whether *this* intent hash was
+declared, and declared before the check was recorded. The index keeps the
+earliest declaration, so re-declaring an intent later cannot make an
+already-judged check look as though it had been declared up front.
+
+## `npm run verify` fails, on purpose
+
+It reports one violation:
+
+```
+FAIL  every resolved override answers a verdict that needed a human
+        override at block 46433040 -> PASS []
+```
+
+That is real and it stays. Early on, the demo recorded a human approval before
+the verdict it answered, so the override resolved against a stale check and
+linked to a `PASS`. Nothing escalates on a pass. The ordering was fixed and
+every override after that block resolves correctly, but the wrong one is on
+chain and cannot be edited.
+
+The assertion could be scoped to blocks after the fix. It is not, because a
+verifier that goes green after being taught to ignore the one thing it found is
+worth less than one that stays red and says why. That is also the project's own
+argument applied to itself: do not report a success you cannot support.
+
+Everything else holds — the contract's clean-verdict invariant seen from the
+indexed side, irreversibility derived rather than trusted, gate-bypass
+detection, per-agent arithmetic, the divergence rate recomputed from its parts,
+and every finding counter recounted from the checks that produced it.
+
+## Ordering is load bearing, and the fix proved it
+
+The first fix resolved every override to a verdict, which looked correct until
+one of them pointed at a `PASS`. Nothing escalates on a pass, so the link was
+wrong.
+
+Two causes. The demo recorded the human override *before* the verdict it
+answered, so the index still held whatever check had last touched that deed
+hash. And two demo cases have byte-identical calldata: sending 100 USDC to the
+same address, declared once honestly and once as going somewhere else. Same
+deed hash, opposite verdicts.
+
+That collision is the thesis stated in two lines. The bytes are not honest or
+dishonest by themselves, only against what was claimed about them. It also
+means a deed hash is not a unique key for a check, which the index had assumed.
+The verdict is now recorded before the human is asked, which is both correct
+and the order the real flow has anyway.
 
 ## Why the approval binds to bytes
 

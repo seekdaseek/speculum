@@ -6,7 +6,9 @@
   "scripts": {
     "test": "node test/compare.test.js && node test/onchain.test.js && node test/simulate.test.js && node test/gate.test.js",
     "compile": "node bin/compile.js",
-    "deploy": "node bin/deploy.js"
+    "deploy": "node bin/deploy.js",
+    "demo": "node bin/demo.js",
+    "verify": "node bin/verify.js"
   },
   "keywords": [],
   "author": "",

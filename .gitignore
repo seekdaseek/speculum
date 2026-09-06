@@ -1,7 +1,19 @@
 node_modules/
-.env
-.DS_Store
-artifacts/
 subgraph/node_modules/
 subgraph/generated/
 subgraph/build/
+artifacts/
+
+# Never commit a key. .deploykey holds the raw private key used to deploy and
+# to run the demo; it was untracked but unignored for a while, which is one
+# `git add -A` away from publishing it.
+.deploykey
+*.key
+.env
+.env.*
+
+# Scaffolding for handing patches over, not part of the project.
+push*.sh
+catchup.sh
+
+.DS_Store

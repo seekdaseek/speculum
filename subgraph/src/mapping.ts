@@ -8,7 +8,7 @@
 
 import { BigInt, BigDecimal, Bytes, Address, ethereum } from '@graphprotocol/graph-ts';
 import { Checked, Declared, Overridden } from '../generated/Speculum/Speculum';
-import { Agent, Check, Declaration, Override, Totals, FindingCount } from '../generated/schema';
+import { Agent, Check, Declaration, Override, Totals, FindingCount, DeedIndex, IntentIndex } from '../generated/schema';
 
 const FINDINGS: string[] = [
   'ACTION_MISMATCH',          // 0
@@ -137,18 +137,28 @@ export function handleChecked(event: Checked): void {
   c.findingBits = bits;
   c.irreversible = isIrreversible(bits);
 
-  // An intent declared only after the calldata exists proves nothing. This
-  // records whether the agent had ever declared anything before this check,
-  // which is the weakest honest version of that ordering claim: the contract
-  // does not tie a Declared event to a specific later check, so a stronger
-  // claim would be more than the data supports.
-  c.declaredFirst = agent.declarations.gt(BigInt.zero());
+  // An intent declared only after the calldata exists proves nothing. Earlier
+  // this asked the weaker question, whether the agent had ever declared
+  // anything at all, because there was no index from intent hash to
+  // declaration. There is one now, so it asks the question that actually
+  // matters: was THIS intent declared, and was it declared before this check.
+  const declared = IntentIndex.load(event.params.intentHash);
+  c.declaredFirst = declared != null && declared.declaredAtBlock.le(event.block.number);
   if (!c.declaredFirst) agent.undeclared = agent.undeclared.plus(ONE);
 
   c.blockNumber = event.block.number;
   c.timestamp = ts;
   c.txHash = event.transaction.hash;
   c.save();
+
+  // Index the deed so a later override can be tied to this verdict. A deed
+  // checked twice keeps the latest verdict, which is the honest answer: the
+  // most recent judgement is the one a human would have been shown.
+  let di = DeedIndex.load(event.params.deedHash);
+  if (di == null) di = new DeedIndex(event.params.deedHash);
+  di.check = c.id;
+  di.agent = agent.id;
+  di.save();
 
   agent.checks = agent.checks.plus(ONE);
   const t = loadTotals();
@@ -177,6 +187,17 @@ export function handleDeclared(event: Declared): void {
   agent.declarations = agent.declarations.plus(ONE);
   agent.save();
 
+  // Keep the EARLIEST declaration of an intent hash. Re-declaring the same
+  // intent later must not be able to make an already-judged check look as
+  // though it had been declared up front.
+  let ii = IntentIndex.load(event.params.intentHash);
+  if (ii == null) {
+    ii = new IntentIndex(event.params.intentHash);
+    ii.declaredAtBlock = event.block.number;
+    ii.agent = agent.id;
+    ii.save();
+  }
+
   const d = new Declaration(eventId(event));
   d.agent = agent.id;
   d.intentHash = event.params.intentHash;
@@ -193,18 +214,30 @@ export function handleOverridden(event: Overridden): void {
   o.blockNumber = event.block.number;
   o.timestamp = event.block.timestamp;
 
-  // Overrides are keyed by deedHash while Checks are keyed by log position, so
-  // finding the matching check means scanning. Rather than pretend the link
-  // exists, this records only whether one was ever seen, and the unchecked
-  // flag carries the finding that matters: a human approving something the
-  // gate never saw means something reached a signer around it.
-  o.check = null;
-  o.unchecked = true;
-
   const t = loadTotals();
   t.overrides = t.overrides.plus(ONE);
-  t.uncheckedOverrides = t.uncheckedOverrides.plus(ONE);
-  t.save();
 
+  // Resolve the verdict this override answers. When there is no matching
+  // check, a human approved a deed the gate never saw, which means something
+  // reached a signer around the gate. That is the finding worth surfacing, and
+  // it is only meaningful because the ordinary case now resolves.
+  const di = DeedIndex.load(event.params.deedHash);
+  if (di == null) {
+    o.check = null;
+    o.unchecked = true;
+    t.uncheckedOverrides = t.uncheckedOverrides.plus(ONE);
+  } else {
+    o.check = di.check;
+    o.unchecked = false;
+
+    const agent = Agent.load(di.agent);
+    if (agent != null) {
+      agent.overridden = agent.overridden.plus(ONE);
+      agent.lastSeen = event.block.timestamp;
+      agent.save();
+    }
+  }
+
+  t.save();
   o.save();
 }

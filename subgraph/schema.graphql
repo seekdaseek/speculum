@@ -56,7 +56,7 @@ type Check @entity(immutable: true) {
   "True when any finding is one that cannot be undone once mined."
   irreversible: Boolean!
 
-  "Whether this agent had declared any intent before this check was recorded."
+  "Whether THIS exact intent hash was declared on chain before this check was recorded."
   declaredFirst: Boolean!
 
   blockNumber: BigInt!
@@ -102,6 +102,40 @@ type Totals @entity(immutable: false) {
   overrides: BigInt!
   uncheckedOverrides: BigInt!
   agents: BigInt!
+}
+
+"""
+Lookup from a deed hash to the check that judged it.
+
+Overrides arrive keyed by deed hash while checks are keyed by log position, so
+without this there is no way to connect a human approval to the verdict it
+answers.
+
+A deed hash is not a unique key for a check. The same calldata can be judged
+against different declarations and reach opposite verdicts, so this holds the
+most recent one. That makes ordering load bearing: a verdict must be recorded
+before the human is asked about it, or the override resolves against a stale
+check. The first version of these mappings hardcoded every override as
+unchecked because this lookup did not exist, which meant the field reported a
+gate bypass on every legitimate approval. A field that is always true carries
+no information and actively misleads.
+"""
+type DeedIndex @entity(immutable: false) {
+  id: Bytes!
+  "The most recent check for this deed hash."
+  check: Check!
+  agent: Agent!
+}
+
+"""
+Lookup from an intent hash to its declaration, so a check can prove that this
+exact intent was declared before the calldata was judged, rather than only that
+the agent had declared something at some point.
+"""
+type IntentIndex @entity(immutable: false) {
+  id: Bytes!
+  declaredAtBlock: BigInt!
+  agent: Agent!
 }
 
 "Running count per divergence class, so what goes wrong most is one query."

@@ -122,6 +122,21 @@ declared, and declared before the check was recorded. The index keeps the
 earliest declaration, so re-declaring an intent later cannot make an
 already-judged check look as though it had been declared up front.
 
+## Paid for by an agent, on Hedera
+
+The gate is also sold by the call. An agent posts what it says it is about to
+do and the calldata it is about to sign, pays in HBAR over x402, and gets the
+verdict back. No account, no API key, no subscription.
+
+A real payment has settled on Hedera testnet through the Blocky402 facilitator:
+100,000 tinybar for a `decode` tier check, settlement
+`0.0.7162784@1788674101.284043818`, verdict `BLOCK` on `RECIPIENT_MISMATCH`.
+The agent paid to be told no about its own transaction.
+
+Pricing is metered rather than flat, because a decode-only check is pure
+computation while a simulated one costs an RPC round trip. Full detail in
+[hedera/README.md](hedera/README.md).
+
 ## `npm run verify` fails, on purpose
 
 It reports one violation:

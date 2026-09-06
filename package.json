@@ -8,7 +8,9 @@
     "compile": "node bin/compile.js",
     "deploy": "node bin/deploy.js",
     "demo": "node bin/demo.js",
-    "verify": "node bin/verify.js"
+    "verify": "node bin/verify.js",
+    "serve": "node hedera/server.js",
+    "agent": "node hedera/agent.js"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +18,8 @@
   "dependencies": {
     "@ledgerhq/hw-app-eth": "^7.8.16",
     "@ledgerhq/hw-transport-node-hid": "^6.33.5",
+    "@x402/hedera": "^2.25.0",
+    "express": "^5.2.1",
     "solc": "^0.8.36",
     "viem": "^2.56.3"
   },

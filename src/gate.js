@@ -17,6 +17,8 @@ import { compare } from './compare.js';
 import { verifyEffect } from './simulate.js';
 import { hashDeed, hashIntent, encodeFindings, LEVEL_CODE } from './onchain.js';
 import { Level, worst } from './types.js';
+import { readHistory, counterpartiesOf } from './history.js';
+import { judge, DEFAULT_POLICY, UNDETERMINED } from './policy.js';
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
@@ -26,6 +28,8 @@ export class Gate {
    * @param {object}  [deps.rpc]       simulation transport; omit to skip simulation
    * @param {object}  [deps.confirm]   confirmation port, see LedgerPort below
    * @param {object}  [deps.recorder]  on-chain recorder, optional
+   * @param {object}  [deps.history]   subgraph reader, see history.js; omit to rule on merits only
+   * @param {object}  [deps.historyPolicy] thresholds, defaults in history.js
    * @param {number}  [deps.ttlMs]     how long an approval stays valid
    * @param {() => number} [deps.now]  injectable clock, for tests
    */
@@ -33,6 +37,8 @@ export class Gate {
     this.rpc = deps.rpc ?? null;
     this.confirm = deps.confirm ?? null;
     this.recorder = deps.recorder ?? null;
+    this.history = deps.history ?? null;
+    this.policy = { ...DEFAULT_POLICY, ...(deps.historyPolicy ?? {}) };
     this.ttlMs = deps.ttlMs ?? DEFAULT_TTL_MS;
     this.now = deps.now ?? (() => Date.now());
     /** @type {Map<string, {approver:string, at:number, used:boolean}>} */
@@ -42,6 +48,14 @@ export class Gate {
   /**
    * Run every available check against a declared intent and a transaction.
    * Returns the combined verdict; does not send anything anywhere.
+   *
+   * The verdict has two layers. `merits` is what the bytes earn on their own:
+   * decoding, comparison, simulation. `level` is the ruling after history
+   * has been consulted, and can only be the merits level or worse. `verdict`
+   * is `level` as a string except when history was asked for and could not
+   * be read, in which case it is UNDETERMINED-ON-HISTORY and `level` is
+   * REFUSE, so no consumer reading either field can mistake a partial ruling
+   * for a full one.
    */
   async check(intent, tx, opts = {}) {
     const stat = compare(intent, tx, opts);
@@ -60,14 +74,41 @@ export class Gate {
       deltas = eff.deltas;
     }
 
+    const deedHash = hashDeed(tx);
+    const merits = { level: worst(levels), findings: [...findings] };
+
+    // History is read after the merits are settled and never before, so the
+    // merits cannot be shaped by it. It is read when a reader is configured;
+    // a gate built without one rules on merits alone and the result says so
+    // in `history.consulted`, which is a configuration a caller chose, not a
+    // failure being hidden.
+    let history = { consulted: false };
+    if (this.history) {
+      // The agent's record is keyed by the signing address. Without it the
+      // agent rule cannot run, and running the others while quietly skipping
+      // that one would be a partial ruling dressed as a full one.
+      if (!opts.from) throw new Error('history needs the signing address: pass opts.from');
+      history = await readHistory(this.history, {
+        deedHash,
+        agent: opts.from,
+        counterparties: counterpartiesOf(stat.deed, opts.from),
+      });
+      const h = judge(history, { merits, intent, deed: stat.deed, policy: this.policy });
+      findings.push(...h.findings);
+      levels.push(h.level);
+    }
+
     const level = worst(levels);
     return {
       level,
+      verdict: history.consulted && !history.available ? UNDETERMINED : level,
       findings,
+      merits,
+      history,
       deed: stat.deed,
       deltas,
       irreversible: stat.irreversible,
-      deedHash: hashDeed(tx),
+      deedHash,
       intentHash: hashIntent(intent),
       needsHuman: level === Level.BLOCK || stat.irreversible,
     };
@@ -107,13 +148,27 @@ export class Gate {
     return { ok: true, approver: record.approver };
   }
 
-  /** Shape a result for the on-chain recorder. */
+  /**
+   * Shape a result for the on-chain recorder.
+   *
+   * What goes on chain is the merits verdict, not the ruling after history.
+   * The record is the measure of how often an agent's words and bytes
+   * disagree, and history escalations are a policy applied to that measure.
+   * Writing them back would count "blocked because it was blocked before" as
+   * a fresh divergence, inflate the divergence rate, and trigger more
+   * escalations off the inflated rate: the record would start measuring the
+   * policy instead of the agent. So the loop is open by construction. The
+   * history findings stay in the result, the escalation stays in the gate,
+   * and the chain keeps counting only what the bytes did against what was
+   * said.
+   */
   toRecord(result) {
+    const merits = result.merits ?? result;
     return {
       intentHash: result.intentHash,
       deedHash: result.deedHash,
-      level: LEVEL_CODE[result.level],
-      findings: encodeFindings(result.findings),
+      level: LEVEL_CODE[merits.level],
+      findings: encodeFindings(merits.findings),
       target: result.deed.target,
     };
   }

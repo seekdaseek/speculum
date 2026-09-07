@@ -10,9 +10,9 @@
 //
 // Exits non-zero on any violation, so it can gate a commit.
 
-const ENDPOINT =
-  process.env.SUBGRAPH_URL ??
-  'https://api.studio.thegraph.com/query/1758736/speculum/v0.0.2';
+import { subgraphUrl } from '../src/subgraph.js';
+
+const ENDPOINT = subgraphUrl();
 
 const QUERY = `{
   agents { id checks passed blocked refused overridden declarations undeclared divergenceRate }

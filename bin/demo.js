@@ -20,6 +20,7 @@ import { Gate, LedgerPort } from '../src/gate.js';
 import { ABI } from '../src/decode.js';
 import { hashIntent } from '../src/onchain.js';
 import { Level } from '../src/types.js';
+import { subgraphUrl } from '../src/subgraph.js';
 
 const CONTRACT = '0xb71db47937d8ddbe1fff208cf5da2727c3f90d9b';
 
@@ -165,7 +166,7 @@ console.log('─'.repeat(72));
 console.log(`\n${CASES.length} cases, ${totalGas} gas total\n`);
 console.log('query the subgraph:');
 console.log(`
-curl -s https://api.studio.thegraph.com/query/1758736/speculum/v0.0.2 \\
+curl -s ${subgraphUrl()} \\
   -H 'content-type: application/json' \\
   -d '{"query":"{ agents { id checks passed blocked refused divergenceRate } findingCounts(orderBy: count, orderDirection: desc) { id count } }"}' | python3 -m json.tool
 `);

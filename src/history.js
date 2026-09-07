@@ -25,10 +25,7 @@
 // exists to catch, so that path is refused rather than fallen back to.
 
 import { Level } from './types.js';
-
-/** The deployed subgraph, Base Sepolia, Subgraph Studio. Override with SUBGRAPH_URL. */
-export const DEFAULT_SUBGRAPH_URL =
-  'https://api.studio.thegraph.com/query/1758736/speculum/v0.0.1';
+import { subgraphUrl } from './subgraph.js';
 
 /** Raised by the reader for any reason the record could not be read. */
 export class HistoryUnavailable extends Error {
@@ -50,13 +47,13 @@ export class HistoryUnavailable extends Error {
  * key embedded in the path.
  *
  * @param {object}  [opts]
- * @param {string}  [opts.url]        defaults to SUBGRAPH_URL, then the deployed endpoint
+ * @param {string}  [opts.url]        defaults to SUBGRAPH_URL in the environment, then the pinned endpoint
  * @param {string}  [opts.apiKey]     defaults to SUBGRAPH_API_KEY; null means none
  * @param {function}[opts.fetchImpl]  injectable, for tests and for a network that is down
  * @param {number}  [opts.timeoutMs]  a hung request is a failed request
  */
 export function subgraphReader(opts = {}) {
-  const url = opts.url ?? process.env.SUBGRAPH_URL ?? DEFAULT_SUBGRAPH_URL;
+  const url = opts.url ?? subgraphUrl();
   const apiKey = opts.apiKey === undefined ? (process.env.SUBGRAPH_API_KEY ?? null) : opts.apiKey;
   const fetchImpl = opts.fetchImpl ?? fetch;
   const timeoutMs = opts.timeoutMs ?? 8_000;

@@ -10,7 +10,9 @@
 //
 // Exits non-zero on any violation, so it can gate a commit.
 
+import { recoverMessageAddress } from 'viem';
 import { subgraphUrl } from '../src/subgraph.js';
+import { LedgerPort } from '../src/gate.js';
 
 const ENDPOINT = subgraphUrl();
 
@@ -18,7 +20,7 @@ const QUERY = `{
   agents { id checks passed blocked refused overridden declarations undeclared divergenceRate }
   checks(first: 500) { id level levelCode findings irreversible declaredFirst }
   overrides(first: 500, orderBy: blockNumber) {
-    id unchecked blockNumber signed signer submitter level reason signature
+    id unchecked blockNumber deedHash approver signed signer submitter level reason signature
     check { id level findings irreversible }
   }
   totals(id: "0x746f74616c73") { overrides signedOverrides }
@@ -99,12 +101,35 @@ const IRREVERSIBLE = new Set([
 
   // A signed override must be internally complete: the recovered signer is
   // the approver, and the level, reason and 65-byte signature are all there.
+  // Legacy overrides have none of these and are not looked at here; they
+  // were already counted above as unproven.
   const signed = overrides.filter((o) => o.signed);
+  const lower = (x) => (x ?? '').toLowerCase();
   const broken = signed.filter((o) =>
-    !o.signer || o.signer.toLowerCase() !== o.approver.toLowerCase()
+    !o.signer || !o.approver || lower(o.signer) !== lower(o.approver)
     || !o.level || !o.reason || !o.signature || o.signature.length !== 132);
   assert(broken.length === 0, 'every signed override is complete: signer, level, reason, 65-byte signature',
     broken.map((o) => `override at block ${o.blockNumber}`).join(', '));
+
+  // The contract recovered the approver on chain from the signature and the
+  // rebuilt message. Recover it again here, off chain, from the indexed parts
+  // alone, and demand the same address. This is the one check that does not
+  // trust the indexer or the contract: the message is rebuilt by the JS port,
+  // the recovery is viem's, and the address must still match.
+  for (const o of signed) {
+    let recovered = null;
+    try {
+      recovered = await recoverMessageAddress({
+        message: LedgerPort.message({ deedHash: o.deedHash, level: o.level, reason: o.reason }),
+        signature: o.signature,
+      });
+    } catch (err) {
+      recovered = `recovery failed: ${err.message}`;
+    }
+    assert(lower(recovered) === lower(o.approver),
+      `signed override at block ${o.blockNumber} recovers off chain to the approver the contract recovered on chain: ${o.approver}`,
+      `off chain ${recovered}, on chain ${o.approver}`);
+  }
 
   // The counter and the rows agree.
   assert(Number(totals?.signedOverrides ?? -1) === signed.length, 'signed override counter matches the rows',

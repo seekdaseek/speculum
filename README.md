@@ -88,7 +88,7 @@ Verified by running, not asserted:
   - build `QmPi9BvZaN8MtxUJr4rX2Kny21TaRmdPBfAx7VWbDTynqV`; the earlier v0.0.1 build `QmcPcbZCirWiJik1zxGbhLCw8RSGwYTRWgH6Lx2X6UhHtZ` still answers but predates the `DeedIndex` and `IntentIndex`
   - **18 checks indexed** from three demo runs of the six cases, two back to back on Sep 5 2026 (blocks 46432987–46433058) and one on Sep 6 (blocks 46450964–46450996), read from v0.0.2 at block 46507336 on Sep 7: 3 passed, 12 blocked, 3 refused. Divergence rate recomputed from those parts, (12 + 3) / 18 = 0.8333, which is what the agent entity stores. RECIPIENT_MISMATCH is the most common finding at 6; every other finding recorded is at 3. `irreversible` resolves true only for the checks carrying UNBOUNDED_APPROVAL or APPROVAL_FOR_ALL, and the finding counters carry the irreversible flag on exactly those two classes.
   - that reconciliation is the proof the bitfield survives JavaScript to Solidity to AssemblyScript with no drift across 15 bit positions, which is the one thing here that could have been silently wrong without anything failing.
-  - 4 overrides, each one a physical confirmation on a Ledger that halted execution until it was tapped. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
+  - 8 overrides. What the chain supports about them, measured on Sep 7 2026 (see [What the chain says about the overrides](#what-the-chain-says-about-the-overrides)): 2 carry a delay no scripted path explains, 22 s and 28 s, the first escalation of each run; 6 are timing-indistinguishable from a script, because the demo's 4 s receipt polling puts the scripted floor at roughly 4 to 6 s and they landed 6 to 8 s after the preceding activity. The 14,435 ms `signPersonalMessage` measurement above was one sample, not a floor. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
 
 - History layer: **run against the deployed subgraph over the network** on Sep 7 2026 with `npm run history`. Eight cases, one round trip each. On the pinned v0.0.2: lookup latency 212 ms min, 260 ms median, 281 ms max; the earlier runs against v0.0.1 measured 253/267/288 ms and 205–297 ms. Three verdicts changed because of what the record held, the same three on both versions. Numbers and the cases are in [What the subgraph decides now](#what-the-subgraph-decides-now).
 
@@ -189,6 +189,58 @@ dishonest by themselves, only against what was claimed about them. It also
 means a deed hash is not a unique key for a check, which the index had assumed.
 The verdict is now recorded before the human is asked, which is both correct
 and the order the real flow has anyway.
+
+## What the chain says about the overrides
+
+An override asserts that a human approved. Until the signed-override path
+below exists it commits to nothing, so the only evidence for a human is time:
+a device confirmation should leave a larger gap between a check and the
+override answering it than a script does. Measured on Sep 7 2026 against
+v0.0.2 at block 46,507,833, on all 18 checks and all 8 overrides.
+
+Base Sepolia's block time is 2.000 s: 2000 s over the 1000 blocks before
+46,507,837, 2.000 s across both demo windows, and every one of 20 consecutive
+deltas exactly 2 s. The analysis rests on that number, so it was measured
+rather than assumed.
+
+| override block | run | gap to the check the index links | gap to the preceding Speculum activity |
+|---|---|---|---|
+| 46433040 | 2 | 11 blocks, 22 s | 22 s |
+| 46433048 | 2 | 59 blocks, 118 s | 16 s |
+| 46433052 | 2 | 62 blocks, 124 s | 8 s |
+| 46433056 | 2 | 65 blocks, 130 s | 6 s |
+| 46450980 | 3 | 14 blocks, 28 s | 28 s |
+| 46450985 | 3 | 3 blocks, 6 s | 6 s |
+| 46450989 | 3 | 3 blocks, 6 s | 6 s |
+| 46450995 | 3 | 4 blocks, 8 s | 8 s |
+
+Run 1 recorded six checks and no overrides.
+
+**Three of those gaps are the ordering bug, found in the record.** In blocks
+46433040 and 46433048 the `recordOverride` transaction sits at a lower
+transaction index and a lower nonce than the `record` transaction for the same
+case (index 8 against 15, nonce 17 against 18; index 8 against 20, nonce 20
+against 21). Run 2 sent each override before its own verdict, so the index
+linked those overrides to the previous run's check on the same deed hash, and
+the gaps of 118 to 130 s measure that bug and nothing about a human. This is
+the failure mode the project exists to catch, a record that says something
+plausible about an event that did not happen that way, reproduced inside its
+own record. The section above describes the fix; this is what the fix left
+behind on chain.
+
+**The rest does not separate into two groups.** The scripted floor is not one
+block. The demo waits for each receipt with viem's default 4 s polling, so a
+scripted record-then-override sequence costs roughly 4 to 6 s on its own. Six
+overrides landed 6 to 8 s after the preceding activity, leaving 0 to 4 s for
+the device, which a human already holding it can do and a script can match.
+Two overrides, the first escalation of each run, sit at 22 s and 28 s, and no
+scripted path explains those. The 14,435 ms figure recorded above for
+`signPersonalMessage` was a single sample, not a floor, and it is not visible
+in the six.
+
+So the chain establishes this much and no more: two of eight overrides carry a
+human-sized delay, and six cannot be told from a script by timing. That is
+why an override now has to prove itself, below, rather than be believed.
 
 ## What the subgraph decides now
 

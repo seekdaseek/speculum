@@ -36,6 +36,8 @@ Undeterminable: `UNKNOWN_SELECTOR`, `MALFORMED_CALLDATA`, `ARGUMENTS_UNDECODABLE
 
 REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than a mismatch that can, because a mismatch is at least understood.
 
+There is a fourth ruling, `UNDETERMINED-ON-HISTORY`, for when the bytes were judged but the record of past verdicts could not be read. It carries `level: REFUSE` so nothing downstream can mistake it for a full verdict. See [What the subgraph decides now](#what-the-subgraph-decides-now).
+
 ## Design decisions worth stating
 
 **The decoder never sees the intent.** If both sides shared a code path the comparison would be circular. `decode()` takes a transaction and nothing else.
@@ -56,7 +58,7 @@ REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than 
 
 Verified by running, not asserted:
 
-- 152 tests pass, 0 fail. `npm test`
+- 265 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
 - Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Run against a live node** on Sep 7 2026 with `node bin/probe-sim.js`: `verifyEffect` through the project's own `jsonRpc` transport against `ethereum-rpc.publicnode.com`, mainnet state at block 25,925,120, sender Circle's EOA holding 53.1M USDC, one `USDC.transfer` of 100 USDC to the burn address. Observed, not assumed:
   - declared 100 USDC: `PASS`, delta `-100000000`, no findings.
@@ -87,6 +89,8 @@ Verified by running, not asserted:
   - **12 checks indexed** from two demo runs: 2 passed, 8 blocked, 2 refused, divergence rate 0.8333. RECIPIENT_MISMATCH is the most common finding at 4, and `irreversible` resolves true only for UNBOUNDED_APPROVAL and APPROVAL_FOR_ALL.
   - that reconciliation is the proof the bitfield survives JavaScript to Solidity to AssemblyScript with no drift across 15 bit positions, which is the one thing here that could have been silently wrong without anything failing.
   - 4 overrides, each one a physical confirmation on a Ledger that halted execution until it was tapped. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
+
+- History layer: **run against the deployed subgraph over the network** on Sep 7 2026 with `npm run history`. Eight cases, one round trip each, lookup latency 253 ms min, 267 ms median, 288 ms max. Three verdicts changed because of what the record held. Numbers and the cases are in [What the subgraph decides now](#what-the-subgraph-decides-now).
 
 ## Two defects the subgraph build found
 
@@ -185,6 +189,139 @@ dishonest by themselves, only against what was claimed about them. It also
 means a deed hash is not a unique key for a check, which the index had assumed.
 The verdict is now recorded before the human is asked, which is both correct
 and the order the real flow has anyway.
+
+## What the subgraph decides now
+
+Until this layer existed the subgraph was write-only. Every verdict was
+indexed and nothing read the index to decide anything, which made it a
+dashboard. Now the gate reads the record over the network before it rules, and
+what it reads can change the ruling.
+
+**What is read.** One GraphQL request to the deployed subgraph
+(`api.studio.thegraph.com/query/1758736/speculum/v0.0.1`, Base Sepolia, set
+`SUBGRAPH_URL` to read another deployment) answers three questions at once:
+
+- every prior verdict on this exact deed hash, and whether any of them was
+  not a PASS, plus any human overrides recorded against those bytes;
+- the signing agent's running record: checks, passed, blocked, refused, and
+  the divergence rate the mappings maintain;
+- whether the recipient or spender in this deed appears in the blocked
+  record, in either role the on-chain event carries: as an agent that has been
+  blocked, or as the target of a blocked check.
+
+The Studio endpoint answers without a key. That was established by calling it,
+three times, HTTP 200 each time, not read off a page. The production gateway
+does need one; `SUBGRAPH_API_KEY` is read from the environment, sent as a
+bearer header, and never printed. The reader's `describe()` redacts a key
+embedded in a gateway URL, and a transport error that echoes the key is
+redacted before it becomes a finding. Both are tested.
+
+**Observed latency.** `npm run history` on Sep 7 2026, eight cases, one read
+each, against the live endpoint indexed to block 46,506,850: 253 ms min,
+267 ms median, 288 ms max per lookup; a second run of the same eight read
+205 ms to 297 ms. A wider query with more aliases measured 354 ms to 828 ms. The reader gives up at 8 s and reports that as
+unavailable rather than hanging the gate.
+
+**The rules, and why each exists.** History can escalate a verdict and can
+never soften one. Every rule either raises a finding or does nothing.
+
+1. *Repeat of a blocked deed* (`HISTORY_REPEAT_OF_BLOCKED_DEED`). If these
+   exact bytes were ever blocked or refused, they escalate now, whatever the
+   current declaration says. The record holds the case that motivates this:
+   byte-identical calldata judged PASS under one declaration and BLOCK under
+   another. Once bytes have been presented under a false description, their
+   reappearance under a matching one is the "rewrite the intent to fit the
+   calldata" move that on-chain declaration ordering exists to catch. A prior
+   human override is reported but does not carry forward: it approved one
+   moment, not the bytes forever. The escalation reads its own one-row query
+   for "any non-PASS on this hash", so the cap on the listed verdicts cannot
+   hide a block.
+2. *Divergent agent* (`HISTORY_AGENT_DIVERGENT`). An agent whose divergence
+   rate is above 0.5, over at least 5 checks, loses the benefit of the doubt on
+   borderline passes. A borderline pass is one that rests on the absence of a
+   claim: the comparator only checks fields the intent declares, so an intent
+   that omits the recipient cannot mismatch on it. The same goes for a pass
+   that used tolerance slack, and for a batch. A full-field pass by the same
+   agent still passes; the record says the agent lies, not that verified bytes
+   are wrong. Why 0.5: an agent wrong more often than right has forfeited the
+   doubt. Why 5: one blocked check is a rate of 1.0 and means nothing; five is
+   small enough to catch an agent in its first session and large enough that
+   one mistake is not a permanent brand. Both are in `DEFAULT_POLICY` and can
+   be tightened per gate.
+3. *Counterparty in the blocked record* (`HISTORY_COUNTERPARTY_BLOCKED`).
+   Value about to go to, or allowance about to be granted to, an address the
+   blocked record already knows escalates. One human tap is cheap against an
+   irreversible transfer to such an address. A limitation, stated plainly: the
+   `Checked` event carries the agent and the call target, not the recipient or
+   spender, so "appeared as a recipient before" is not answerable from this
+   contract. The address is matched against the two roles that are on chain,
+   and the finding names which one matched. Making the counterparty a
+   first-class field needs an event change, a redeploy and a reindex.
+4. *Unreadable record* (`HISTORY_UNAVAILABLE`). If the subgraph is
+   unreachable, answers with errors, times out, or reports indexing errors,
+   the ruling is `UNDETERMINED-ON-HISTORY` with `level: REFUSE`, and the
+   merits verdict is carried separately so an operator can still see what the
+   bytes earned. There is no fallback to a no-history verdict. A partial ruling
+   presented as complete is the exact failure this project exists to catch.
+   Tested with a scripted transport for each failure, and once with no mock at
+   all: a real socket to a port nothing listens on.
+
+**The invariant.** History never softens. It is enforced structurally: the
+level table for history findings has no PASS in it, the gate combines levels
+with the same `worst()` the rest of the engine uses, and a test asserts the
+table stays that way. It is also tested by enumeration: eleven records,
+including a spotless agent and a deed with five prior overrides, against five
+merits outcomes, sixty combinations, and the ruling is never below the
+merits. A clean record does not make bad bytes good.
+
+**What goes on chain is still the merits.** `toRecord()` writes the verdict
+the bytes earned, not the ruling after history. The record is the measure of
+how often an agent's words and bytes disagree; the history rules are a policy
+applied to that measure. Writing escalations back would count "blocked because
+it was blocked before" as a fresh divergence, inflate the rate, and trigger
+more escalations off the inflated rate. The record would start measuring the
+policy instead of the agent. The loop is open by construction.
+
+**A verdict that changed, from the live record.** The demo's first case is an
+honest transfer of 100 USDC to `0x…dEaD`, fully declared. On its bytes alone
+it is `PASS`, with no findings. Its deed hash is
+`0xc9e4f5435cfd5ae7b9f5347525039099a2a50cd200e912bb33f0cba32b86e1ff`, and the
+subgraph holds six verdicts on that hash: three `PASS` and three `BLOCK` on
+`RECIPIENT_MISMATCH`, because the demo also submits the same bytes under a
+declaration that names a different recipient. With history consulted the
+ruling is:
+
+```
+honest transfer (bytes shared with the case below)
+  bytes alone   PASS
+  with history  BLOCK   <- changed
+  record        6 prior verdict(s) on these bytes: 3 PASS, 3 BLOCK, 0 REFUSE, 2 override(s); indexed to block 46506850; 288ms
+  history       HISTORY_REPEAT_OF_BLOCKED_DEED — judged 6 time(s) before: 3 passed, 3 blocked, 0 refused, 2 human override(s), which do not carry forward
+```
+
+Two more changed in the same run. A transfer with the recipient left
+undeclared, never seen before, passed on its bytes and was escalated because
+the agent's indexed record is 15 divergences in 18 checks, rate 0.83, over the
+0.5 threshold; the finding says which claim the pass was resting on. And an
+exact, fully declared approval to the Uniswap router was escalated because the
+router is the target of three blocked checks in the record. The five cases
+that did not change were already `BLOCK` or `REFUSE` on their bytes, or were a
+fully declared transfer by an agent whose record could not lower a verified
+pass. Three of eight changed, none softened.
+
+Two endpoint facts worth knowing. Both `v0.0.1` and `v0.0.2` of the subgraph
+hold the same 18 checks; `v0.0.2` adds the `DeedIndex` and `IntentIndex`
+described above, so its overrides resolve and `Agent.overridden` is 8 where
+`v0.0.1` reports 0. The history layer relies on neither and reads `v0.0.1` as
+deployed; nothing in the rules uses `overridden`. And Bytes filters on
+graph-node are case-insensitive, checked by querying the same hash in both
+cases; the reader lowercases anyway.
+
+`bin/demo.js` and `hedera/server.js` still construct the gate without a
+reader, so they rule on merits alone and their results say
+`history.consulted: false`. Wiring the paid service is a pricing decision, not
+a code one: a lookup that comes back unreadable makes a paid verdict
+undetermined, and whether that call is charged is an open question.
 
 ## Why the approval binds to bytes
 

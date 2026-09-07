@@ -56,7 +56,7 @@ REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than 
 
 Verified by running, not asserted:
 
-- 136 tests pass, 0 fail. `npm test`
+- 138 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
 - Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Run against a live node** on Sep 7 2026 with `node bin/probe-sim.js`: `verifyEffect` through the project's own `jsonRpc` transport against `ethereum-rpc.publicnode.com`, mainnet state at block 25,925,120, sender Circle's EOA holding 53.1M USDC, one `USDC.transfer` of 100 USDC to the burn address. Observed, not assumed:
   - declared 100 USDC: `PASS`, delta `-100000000`, no findings.

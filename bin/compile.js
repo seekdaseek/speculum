@@ -23,7 +23,7 @@ const input = {
   sources: { 'Speculum.sol': { content: source } },
   settings: {
     optimizer: { enabled: true, runs: 200 },
-    outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object', 'evm.gasEstimates'] } },
+    outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object', 'evm.gasEstimates'] } },
   },
 };
 
@@ -45,7 +45,14 @@ mkdirSync('artifacts', { recursive: true });
 writeFileSync(
   'artifacts/Speculum.json',
   JSON.stringify(
-    { compiler: solc.version(), abi: c.abi, bytecode: '0x' + c.evm.bytecode.object },
+    {
+      compiler: solc.version(),
+      abi: c.abi,
+      bytecode: '0x' + c.evm.bytecode.object,
+      // Runtime code, so the contract can be exercised on a live EVM through
+      // an eth_call state override before anything is deployed.
+      deployedBytecode: '0x' + c.evm.deployedBytecode.object,
+    },
     null,
     2,
   ) + '\n',

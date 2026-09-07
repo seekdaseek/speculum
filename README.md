@@ -44,7 +44,7 @@ REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than 
 
 **Unknown selector and unreadable arguments are different failures.** Both refuse, but an operator reading the log needs to know whether the function was unrecognised or merely unparseable. An earlier version conflated them because the check was structurally always true; the test caught it.
 
-**A batch is judged leg by leg and is only as good as its worst leg.** A `multicall(deadline, bytes[])` is decoded one leg at a time with the same decoder, from bytes alone, and the batch takes the worst verdict any leg reached. One unknown or unreadable leg refuses the whole batch, and it is reported as unknown or unreadable rather than collapsed into one class at the batch boundary. Every finding a leg raises names its leg in the detail, so an operator reading the log knows which leg did it. Native value sums across legs; tokens and recipients become sets and each member is compared against the declaration; movements of one asset are summed, because two legs of half the amount still move the whole of it. Nesting and leg count are capped (2 frames, 32 legs) and a batch past either cap refuses with the reason rather than recursing. An earlier version refused every batch outright rather than claim a recursion it did not have.
+**A batch is judged leg by leg and is only as good as its worst leg.** Both Uniswap multicall selectors decode, `multicall(uint256 deadline, bytes[] data)` from SwapRouter02 and `multicall(bytes[] data)` from the V3 SwapRouter, through one path that finds the `bytes[]` input by type and ignores the deadline. Each leg is decoded one at a time with the same decoder, from bytes alone, and the batch takes the worst verdict any leg reached. One unknown or unreadable leg refuses the whole batch, and it is reported as unknown or unreadable rather than collapsed into one class at the batch boundary. Every finding a leg raises names its leg in the detail, so an operator reading the log knows which leg did it. Native value sums across legs; tokens and recipients become sets and each member is compared against the declaration; movements of one asset are summed, because two legs of half the amount still move the whole of it. Nesting and leg count are capped (2 frames, 32 legs) and a batch past either cap refuses with the reason rather than recursing. An earlier version refused every batch outright rather than claim a recursion it did not have.
 
 **An honestly declared unlimited approval is not a lie.** It still blocks, because it is still irreversible, but it is tagged as declared rather than as deception.
 
@@ -56,7 +56,7 @@ REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than 
 
 Verified by running, not asserted:
 
-- 138 tests pass, 0 fail. `npm test`
+- 152 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
 - Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Run against a live node** on Sep 7 2026 with `node bin/probe-sim.js`: `verifyEffect` through the project's own `jsonRpc` transport against `ethereum-rpc.publicnode.com`, mainnet state at block 25,925,120, sender Circle's EOA holding 53.1M USDC, one `USDC.transfer` of 100 USDC to the burn address. Observed, not assumed:
   - declared 100 USDC: `PASS`, delta `-100000000`, no findings.

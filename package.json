@@ -10,6 +10,8 @@
     "demo": "node bin/demo.js",
     "verify": "node bin/verify.js",
     "history": "node bin/probe-history.js",
+    "probe:override": "node bin/probe-override.js",
+    "release": "bash bin/release.sh",
     "serve": "node hedera/server.js",
     "agent": "node hedera/agent.js"
   },

@@ -21,8 +21,13 @@ import { ABI } from '../src/decode.js';
 import { hashIntent } from '../src/onchain.js';
 import { Level } from '../src/types.js';
 import { subgraphUrl } from '../src/subgraph.js';
+import { contractAddress } from '../src/deployment.js';
 
-const CONTRACT = '0xb71db47937d8ddbe1fff208cf5da2727c3f90d9b';
+const CONTRACT = contractAddress();
+if (/^0x0{40}$/.test(CONTRACT)) {
+  console.error('src/deployment.js still holds the placeholder address; run bin/release.sh first, or set SPECULUM_CONTRACT');
+  process.exit(1);
+}
 
 const RPC = process.env.RPC_URL;
 const KEY = process.env.DEPLOY_KEY;
@@ -150,12 +155,23 @@ for (const c of CASES) {
 
   if (result.needsHuman && confirm) {
     console.log('  escalating to the device, confirm or reject it');
+    const t0 = Date.now();
     const approved = await gate.escalate(result);
-    console.log(`  human        ${approved ? 'approved' : confirm.lastError ?? 'declined'}`);
+    console.log(`  human        ${approved ? 'approved' : confirm.lastError ?? 'declined'}  (${Date.now() - t0} ms on the device)`);
     if (approved) {
-      const o = await send('recordOverride', [result.deedHash]);
-      totalGas += o.gas;
-      console.log(`  override     ${o.hash}  (${o.gas} gas)`);
+      // The override goes on chain with the signature the device produced,
+      // and the contract recovers the approver from it before emitting
+      // anything. An approval the gate cannot prove is not recorded, and the
+      // demo says so rather than recording a claim.
+      const proof = gate.proof(result);
+      if (!proof) {
+        console.log('  override     NOT recorded: the confirmation port returned no signature, so there is nothing to prove');
+      } else {
+        const o = await send('recordOverride', [proof.deedHash, proof.level, proof.reason, proof.signature]);
+        totalGas += o.gas;
+        console.log(`  override     ${o.hash}  (${o.gas} gas)`);
+        console.log(`  approver     ${proof.approver}, recovered on chain from the device signature`);
+      }
     }
   } else if (result.needsHuman) {
     console.log('  needs a human — run with --ledger to require the tap');

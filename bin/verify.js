@@ -18,9 +18,10 @@ const QUERY = `{
   agents { id checks passed blocked refused overridden declarations undeclared divergenceRate }
   checks(first: 500) { id level levelCode findings irreversible declaredFirst }
   overrides(first: 500, orderBy: blockNumber) {
-    id unchecked blockNumber
+    id unchecked blockNumber signed signer submitter level reason signature
     check { id level findings irreversible }
   }
+  totals(id: "0x746f74616c73") { overrides signedOverrides }
   findingCounts { id count irreversible }
 }`;
 
@@ -31,11 +32,16 @@ const res = await fetch(ENDPOINT, {
 });
 const body = await res.json();
 if (body.errors) {
-  console.error('query failed:', JSON.stringify(body.errors));
+  const msgs = body.errors.map((e) => e.message).join('; ');
+  if (/signed|signer|submitter|signature/.test(msgs)) {
+    console.error('the pinned subgraph predates signed overrides, so it cannot be verified against the current assertions.');
+    console.error('publish the new subgraph version and pin it in src/subgraph.js (bin/release.sh does both).');
+  }
+  console.error('query failed:', msgs);
   process.exit(1);
 }
 
-const { agents, checks, overrides, findingCounts } = body.data;
+const { agents, checks, overrides, findingCounts, totals } = body.data;
 
 let failures = 0;
 const assert = (ok, name, detail) => {
@@ -80,6 +86,33 @@ const IRREVERSIBLE = new Set([
     `${orphan.length} override(s) with no matching check — that means something reached a signer around the gate`);
 }
 
+// --- every override claiming a human must be able to prove one --------------
+// An override is the record saying a human approved. Since the signed path
+// exists, the contract will not emit one it cannot recover a signer from. The
+// eight overrides from the first contract carry no signature and never will;
+// they fail this assertion and stay failing, because a verifier that learns to
+// look past the overrides it cannot prove is a verifier that proves nothing.
+{
+  const unproven = overrides.filter((o) => !o.signed || !o.signer);
+  assert(unproven.length === 0, 'every override carries a recoverable device signature',
+    `${unproven.length} override(s) unproven, at block(s) ${unproven.map((o) => o.blockNumber).join(', ')} — they predate the signed path and cannot be proven now`);
+
+  // A signed override must be internally complete: the recovered signer is
+  // the approver, and the level, reason and 65-byte signature are all there.
+  const signed = overrides.filter((o) => o.signed);
+  const broken = signed.filter((o) =>
+    !o.signer || o.signer.toLowerCase() !== o.approver.toLowerCase()
+    || !o.level || !o.reason || !o.signature || o.signature.length !== 132);
+  assert(broken.length === 0, 'every signed override is complete: signer, level, reason, 65-byte signature',
+    broken.map((o) => `override at block ${o.blockNumber}`).join(', '));
+
+  // The counter and the rows agree.
+  assert(Number(totals?.signedOverrides ?? -1) === signed.length, 'signed override counter matches the rows',
+    `counter ${totals?.signedOverrides}, rows ${signed.length}`);
+  assert(Number(totals?.overrides ?? -1) === overrides.length, 'override counter matches the rows',
+    `counter ${totals?.overrides}, rows ${overrides.length}`);
+}
+
 // --- per-agent arithmetic ---------------------------------------------------
 for (const a of agents) {
   const total = Number(a.passed) + Number(a.blocked) + Number(a.refused);
@@ -108,6 +141,6 @@ for (const a of agents) {
     badFlag.map((fc) => fc.id).join(', '));
 }
 
-console.log(`\n${checks.length} checks, ${overrides.length} overrides, ${agents.length} agent(s)`);
+console.log(`\n${checks.length} checks, ${overrides.length} overrides (${overrides.filter((o) => o.signed).length} signed, ${overrides.filter((o) => !o.signed).length} unproven), ${agents.length} agent(s)`);
 console.log(failures ? `\n${failures} VIOLATION(S)` : '\nall invariants hold');
 process.exit(failures ? 1 : 0);

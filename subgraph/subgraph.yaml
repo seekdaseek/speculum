@@ -4,15 +4,51 @@ repository: https://github.com/seekdaseek/speculum
 schema:
   file: ./schema.graphql
 dataSources:
+  # The first contract. Its Overridden event carried msg.sender only, so
+  # every override it emitted is indexed as unsigned. It stays a data source
+  # so the record is continuous and nothing that happened is dropped or
+  # rewritten; the eight overrides it holds read as unproven, which is what
+  # they are.
+  - kind: ethereum
+    name: SpeculumV1
+    network: base-sepolia
+    source:
+      address: "0xb71db47937d8ddbe1fff208cf5da2727c3f90d9b"
+      abi: SpeculumV1
+      startBlock: 46426715
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Agent
+        - Check
+        - Declaration
+        - Override
+        - Totals
+        - FindingCount
+      abis:
+        - name: SpeculumV1
+          file: ./abis/SpeculumV1.json
+      eventHandlers:
+        - event: Checked(indexed address,indexed bytes32,indexed bytes32,uint8,uint32,address)
+          handler: handleCheckedV1
+        - event: Declared(indexed address,indexed bytes32,uint64)
+          handler: handleDeclaredV1
+        - event: Overridden(indexed bytes32,indexed address)
+          handler: handleOverriddenV1
+      file: ./src/mapping.ts
+  # The contract that recovers the approver from a device signature before it
+  # emits an override. Address and startBlock are written by bin/release.sh
+  # from the deploy receipt; the zero address below is a placeholder and the
+  # release script refuses to publish while it is still here.
   - kind: ethereum
     name: Speculum
     network: base-sepolia
     source:
-      address: "0xb71db47937d8ddbe1fff208cf5da2727c3f90d9b"
+      address: "0x0000000000000000000000000000000000000000"
       abi: Speculum
-      # The block the contract was deployed in, read off the receipt. Starting
-      # from zero would crawl the whole chain to reach the first event.
-      startBlock: 46426715
+      startBlock: 0
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -32,6 +68,6 @@ dataSources:
           handler: handleChecked
         - event: Declared(indexed address,indexed bytes32,uint64)
           handler: handleDeclared
-        - event: Overridden(indexed bytes32,indexed address)
+        - event: Overridden(indexed bytes32,indexed address,address,uint8,string,bytes)
           handler: handleOverridden
       file: ./src/mapping.ts

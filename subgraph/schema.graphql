@@ -76,7 +76,31 @@ type Declaration @entity(immutable: true) {
 type Override @entity(immutable: true) {
   id: Bytes!
   deedHash: Bytes!
+
+  """
+  Who approved. For a signed override this is the address the contract
+  recovered from the device signature. For an override from the first
+  contract it is only msg.sender of the recording transaction, which is the
+  relayer, not necessarily a human.
+  """
   approver: Bytes!
+
+  """
+  True when the override carries a device signature that the contract
+  recovered to `signer`. False for every override the first contract
+  emitted: those asserted a human approved and committed to nothing, and the
+  block gaps around them could not tell six of the eight from a script. They
+  stay in the record as unproven. Nothing back-claims them.
+  """
+  signed: Boolean!
+  signer: Bytes
+  submitter: Bytes
+  "The verdict the human was shown, BLOCK or REFUSE. Null for unsigned overrides."
+  level: String
+  "The one-line reason the human was shown. Null for unsigned overrides."
+  reason: String
+  "The 65-byte EIP-191 signature over the approval message. Null for unsigned overrides."
+  signature: Bytes
 
   "The check this override answers, when one is known."
   check: Check
@@ -101,6 +125,8 @@ type Totals @entity(immutable: false) {
   refused: BigInt!
   overrides: BigInt!
   uncheckedOverrides: BigInt!
+  "Overrides that carry a recovered device signature. The rest are unproven."
+  signedOverrides: BigInt!
   agents: BigInt!
 }
 

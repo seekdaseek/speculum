@@ -8,6 +8,11 @@
 
 import { BigInt, BigDecimal, Bytes, Address, ethereum } from '@graphprotocol/graph-ts';
 import { Checked, Declared, Overridden } from '../generated/Speculum/Speculum';
+import {
+  Checked as CheckedV1,
+  Declared as DeclaredV1,
+  Overridden as OverriddenV1,
+} from '../generated/SpeculumV1/SpeculumV1';
 import { Agent, Check, Declaration, Override, Totals, FindingCount, DeedIndex, IntentIndex } from '../generated/schema';
 
 const FINDINGS: string[] = [
@@ -75,6 +80,7 @@ function loadTotals(): Totals {
     t.refused = BigInt.zero();
     t.overrides = BigInt.zero();
     t.uncheckedOverrides = BigInt.zero();
+    t.signedOverrides = BigInt.zero();
     t.agents = BigInt.zero();
   }
   return t as Totals;
@@ -115,22 +121,43 @@ function eventId(event: ethereum.Event): Bytes {
   return event.transaction.hash.concatI32(event.logIndex.toI32());
 }
 
+// Both contracts emit Checked and Declared with the same shape, so the two
+// generated event classes feed one body each. The generated classes are
+// distinct types, which is why the thin wrappers below exist.
+
+export function handleCheckedV1(event: CheckedV1): void {
+  onChecked(event, event.params.agent, event.params.intentHash, event.params.deedHash,
+    event.params.level, event.params.findings, event.params.target);
+}
+
 export function handleChecked(event: Checked): void {
+  onChecked(event, event.params.agent, event.params.intentHash, event.params.deedHash,
+    event.params.level, event.params.findings, event.params.target);
+}
+
+function onChecked(
+  event: ethereum.Event,
+  agentAddr: Address,
+  intentHash: Bytes,
+  deedHash: Bytes,
+  levelCode: i32,
+  findings: BigInt,
+  target: Address,
+): void {
   const ts = event.block.timestamp;
-  const agent = loadAgent(event.params.agent, ts);
+  const agent = loadAgent(agentAddr, ts);
 
   // findings is uint32 on the wire, which graph-ts hands over as BigInt.
   // Converting once here keeps every helper below working in plain i32, and
   // the bitfield only ever uses 15 of those bits so the narrowing is safe.
-  const bits = event.params.findings.toI32();
-  const levelCode = event.params.level;
+  const bits = findings.toI32();
   const level = levelCode < LEVELS.length ? LEVELS[levelCode] : 'UNKNOWN';
 
   const c = new Check(eventId(event));
   c.agent = agent.id;
-  c.intentHash = event.params.intentHash;
-  c.deedHash = event.params.deedHash;
-  c.target = event.params.target;
+  c.intentHash = intentHash;
+  c.deedHash = deedHash;
+  c.target = target;
   c.level = level;
   c.levelCode = levelCode;
   c.findings = decodeFindings(bits);
@@ -142,7 +169,7 @@ export function handleChecked(event: Checked): void {
   // anything at all, because there was no index from intent hash to
   // declaration. There is one now, so it asks the question that actually
   // matters: was THIS intent declared, and was it declared before this check.
-  const declared = IntentIndex.load(event.params.intentHash);
+  const declared = IntentIndex.load(intentHash);
   c.declaredFirst = declared != null && declared.declaredAtBlock.le(event.block.number);
   if (!c.declaredFirst) agent.undeclared = agent.undeclared.plus(ONE);
 
@@ -154,8 +181,8 @@ export function handleChecked(event: Checked): void {
   // Index the deed so a later override can be tied to this verdict. A deed
   // checked twice keeps the latest verdict, which is the honest answer: the
   // most recent judgement is the one a human would have been shown.
-  let di = DeedIndex.load(event.params.deedHash);
-  if (di == null) di = new DeedIndex(event.params.deedHash);
+  let di = DeedIndex.load(deedHash);
+  if (di == null) di = new DeedIndex(deedHash);
   di.check = c.id;
   di.agent = agent.id;
   di.save();
@@ -182,17 +209,25 @@ export function handleChecked(event: Checked): void {
   bumpFindingCounts(bits);
 }
 
+export function handleDeclaredV1(event: DeclaredV1): void {
+  onDeclared(event, event.params.agent, event.params.intentHash, event.params.nonce);
+}
+
 export function handleDeclared(event: Declared): void {
-  const agent = loadAgent(event.params.agent, event.block.timestamp);
+  onDeclared(event, event.params.agent, event.params.intentHash, event.params.nonce);
+}
+
+function onDeclared(event: ethereum.Event, agentAddr: Address, intentHash: Bytes, nonce: BigInt): void {
+  const agent = loadAgent(agentAddr, event.block.timestamp);
   agent.declarations = agent.declarations.plus(ONE);
   agent.save();
 
   // Keep the EARLIEST declaration of an intent hash. Re-declaring the same
   // intent later must not be able to make an already-judged check look as
   // though it had been declared up front.
-  let ii = IntentIndex.load(event.params.intentHash);
+  let ii = IntentIndex.load(intentHash);
   if (ii == null) {
-    ii = new IntentIndex(event.params.intentHash);
+    ii = new IntentIndex(intentHash);
     ii.declaredAtBlock = event.block.number;
     ii.agent = agent.id;
     ii.save();
@@ -200,28 +235,63 @@ export function handleDeclared(event: Declared): void {
 
   const d = new Declaration(eventId(event));
   d.agent = agent.id;
-  d.intentHash = event.params.intentHash;
-  d.nonce = event.params.nonce;
+  d.intentHash = intentHash;
+  d.nonce = nonce;
   d.blockNumber = event.block.number;
   d.timestamp = event.block.timestamp;
   d.save();
 }
 
+/**
+ * An override from the first contract. It carried msg.sender and nothing
+ * else, so it is indexed as unsigned with no signer, no level, no reason.
+ * This is not a gap to be filled later: there is nothing on chain that could
+ * fill it, and writing anything more here would be inventing history.
+ */
+export function handleOverriddenV1(event: OverriddenV1): void {
+  const o = new Override(eventId(event));
+  o.deedHash = event.params.deedHash;
+  o.approver = event.params.approver;
+  o.signed = false;
+  o.signer = null;
+  o.submitter = event.params.approver;
+  o.level = null;
+  o.reason = null;
+  o.signature = null;
+  finishOverride(event, o);
+}
+
+/**
+ * An override the contract only emitted after recovering the approver from
+ * the device signature over the approval message that names this deed. The
+ * signer is the approver; the submitter is whoever relayed it.
+ */
 export function handleOverridden(event: Overridden): void {
   const o = new Override(eventId(event));
   o.deedHash = event.params.deedHash;
   o.approver = event.params.approver;
+  o.signed = true;
+  o.signer = event.params.approver;
+  o.submitter = event.params.submitter;
+  o.level = event.params.level < LEVELS.length ? LEVELS[event.params.level] : 'UNKNOWN';
+  o.reason = event.params.reason;
+  o.signature = event.params.signature;
+  finishOverride(event, o);
+}
+
+function finishOverride(event: ethereum.Event, o: Override): void {
   o.blockNumber = event.block.number;
   o.timestamp = event.block.timestamp;
 
   const t = loadTotals();
   t.overrides = t.overrides.plus(ONE);
+  if (o.signed) t.signedOverrides = t.signedOverrides.plus(ONE);
 
   // Resolve the verdict this override answers. When there is no matching
   // check, a human approved a deed the gate never saw, which means something
   // reached a signer around the gate. That is the finding worth surfacing, and
   // it is only meaningful because the ordinary case now resolves.
-  const di = DeedIndex.load(event.params.deedHash);
+  const di = DeedIndex.load(o.deedHash);
   if (di == null) {
     o.check = null;
     o.unchecked = true;

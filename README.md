@@ -58,7 +58,13 @@ Verified by running, not asserted:
 
 - 136 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
-- Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Never run against a live node.**
+- Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Run against a live node** on Sep 7 2026 with `node bin/probe-sim.js`: `verifyEffect` through the project's own `jsonRpc` transport against `ethereum-rpc.publicnode.com`, mainnet state at block 25,925,120, sender Circle's EOA holding 53.1M USDC, one `USDC.transfer` of 100 USDC to the burn address. Observed, not assumed:
+  - declared 100 USDC: `PASS`, delta `-100000000`, no findings.
+  - declared 50 USDC: `BLOCK` on `BALANCE_DELTA_MISMATCH`, detail `declared 50000000, 100000000 actually leaves`.
+  - response shape `{ jsonrpc, id, result }` with `result` one block carrying full header fields (`number`, `hash`, `timestamp`, `gasUsed`, `baseFeePerGas`, `stateRoot`, ...) plus `calls: [3 × { returnData, logs, gasUsed, status }]`, 2,974 bytes. Exactly the shape the parser expects.
+  - `gasUsed` 31,259 for each `balanceOf` probe, 44,932 for the transfer, 107,450 for the block. `baseFeePerGas` comes back `0`, so gas is measured but fees are not.
+  - wall clock 58, 59, 69 and 80 ms per `eth_simulateV1` round trip across two runs of both cases, HTTP 200 every time.
+  - nothing was signed or broadcast. Validation is off, so the node runs the call from an address it holds no key for; the balance it debits is real and the block is discarded.
 - Gate and approval binding: built and tested. An approval commits to chainId, target, value and calldata; changing one argument, adding value, or switching chain voids it. Single use, with expiry.
 - Ledger confirmation port: **run against real hardware.** `@ledgerhq/hw-app-eth` 7.8.16, `@ledgerhq/hw-transport-node-hid` 6.33.5, Ethereum app on device. Measured, not assumed:
   - `getAddress` returns in ~470ms with no prompt on the device.

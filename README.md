@@ -58,7 +58,7 @@ There is a fourth ruling, `UNDETERMINED-ON-HISTORY`, for when the bytes were jud
 
 Verified by running, not asserted:
 
-- 265 tests pass, 0 fail. `npm test`
+- 281 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
 - Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Run against a live node** on Sep 7 2026 with `node bin/probe-sim.js`: `verifyEffect` through the project's own `jsonRpc` transport against `ethereum-rpc.publicnode.com`, mainnet state at block 25,925,120, sender Circle's EOA holding 53.1M USDC, one `USDC.transfer` of 100 USDC to the burn address. Observed, not assumed:
   - declared 100 USDC: `PASS`, delta `-100000000`, no findings.
@@ -381,6 +381,79 @@ reader, so they rule on merits alone and their results say
 `history.consulted: false`. Wiring the paid service is a pricing decision, not
 a code one: a lookup that comes back unreadable makes a paid verdict
 undetermined, and whether that call is charged is an open question.
+
+## An override now proves itself
+
+Until this change an override asserted that a human approved and committed
+to nothing: the event carried `msg.sender`, which is the relayer. The section
+above shows what that left on chain, eight overrides of which six cannot be
+told from a script. That is the project's own rule, that a confirmation which
+does not commit to specific bytes is worse than none, broken inside the
+project.
+
+**What changes.** The device already signed the approval message; the
+signature was thrown away after the local approval was stored. Now it is kept
+and put on chain. `recordOverride(deedHash, level, reason, signature)` rebuilds
+the exact text the device displayed from its parts, hashes it the EIP-191 way
+`signPersonalMessage` does, recovers the signer with `ecrecover`, and refuses
+to emit anything if nobody recovers. The message is rebuilt on chain rather
+than passed in, so a signature can only ever be over a message that names
+this deed hash. `Overridden` now carries the recovered `approver`, the
+`submitter` that relayed it, the `level` and `reason` the human saw, and the
+65-byte `signature`. The subgraph indexes all of it and a new field, `signed`,
+says whether an override carries a recoverable device signature.
+
+**Old overrides read as unproven.** The first contract stays a data source in
+the subgraph, so its 18 checks and 8 overrides remain in the record
+unchanged, and each of those overrides is indexed with `signed: false`, no
+signer, no level, no reason. Nothing back-claims them. There is nothing on
+chain that could.
+
+**`npm run verify` gains an assertion**: every override carries a recoverable
+device signature, and every signed one is complete. The eight legacy overrides
+fail it and will keep failing, for the same reason the earlier violation
+stays red: a verifier that learns to look past what it cannot prove proves
+nothing. Against the still-pinned v0.0.2 the script now stops with "the
+pinned subgraph predates signed overrides" rather than silently skipping the
+assertion.
+
+**Verified before deploying, on a real EVM.** `node bin/probe-override.js`
+places the compiled runtime code on `sepolia.base.org` through an `eth_call`
+state override and calls it there, so nothing is deployed and no key that
+matters signs anything. Observed on Sep 7 2026:
+
+- the contract rebuilds the device message byte for byte, 174 characters;
+- a real secp256k1 signature from a throwaway account recovers on chain to
+  the same address viem recovers;
+- the same signature over a different deed, a different reason, or a
+  different level recovers a different address, so the binding holds on all
+  three;
+- a short signature recovers nobody; `v` as 0/1 is accepted alongside 27/28;
+- `recordOverride` reverts with no signature and reverts on a PASS;
+- gas by `eth_estimateGas` from the deployer's own address: deploy 872,801,
+  `record` 26,416, `declareIntent` 46,662, signed `recordOverride` 61,654.
+
+The signed override costs about 18 times a bare `record`. That is the price
+of the claim being provable, and it is paid once per human decision, not per
+check.
+
+**The deploy is funded.** Deployer `0xC50D…54f6` holds 0.14998 ETH on Base
+Sepolia; at the measured gas price of 0.006 gwei the deploy's execution costs
+about 0.0000052 ETH, a 28,640× margin before the L1 data fee, which is small at
+this size.
+
+**Not yet done, deliberately.** The contract is not deployed, the subgraph
+version `v0.0.3` is not published, and no signed override exists on chain,
+because all three need the owner: the deploy spends from the deploy key, the
+publish needs the Studio deploy key, and the demo needs a physical tap.
+`bash bin/release.sh` does the eight steps in order, stops on the first
+failure, reads both keys from a file and a prompt rather than arguments,
+refuses to publish while the manifest still holds the placeholder address,
+and pins `v0.0.3` in `src/subgraph.js` only after the publish. Until it has
+run, `src/deployment.js` holds the zero address and `bin/demo.js` refuses to
+start. The numbers that will come out of that run, real signed overrides and
+the gap they leave between the record and the tap, belong in this file when
+they exist and not before.
 
 ## Why the approval binds to bytes
 

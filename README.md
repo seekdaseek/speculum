@@ -83,14 +83,14 @@ Verified by running, not asserted:
   - the subgraph indexes from that block; starting from zero would crawl the whole chain
   - an earlier deployment at `0x00d6ceec3a85b0f6288df0005e6649f923e472c4` (block 46426233) is superseded and left on chain. Its ABI contains a function named `declare`, which no subgraph can compile against, which is why it was replaced.
 - Ledger's own ESM build does not resolve under Node: `lib-es` contains extensionless relative imports and `import` throws `ERR_MODULE_NOT_FOUND`. Their packages must be loaded through `createRequire`. Reproduced both ways before working around it.
-- Subgraph: **deployed and synced**, v0.0.1 on Subgraph Studio, Base Sepolia.
-  - query endpoint `https://api.studio.thegraph.com/query/1758736/speculum/v0.0.1`
-  - build `QmcPcbZCirWiJik1zxGbhLCw8RSGwYTRWgH6Lx2X6UhHtZ`
+- Subgraph: **deployed and synced**, v0.0.2 on Subgraph Studio, Base Sepolia.
+  - query endpoint `https://api.studio.thegraph.com/query/1758736/speculum/v0.0.2`, pinned once in `src/subgraph.js` and imported by everything that reads it
+  - build `QmPi9BvZaN8MtxUJr4rX2Kny21TaRmdPBfAx7VWbDTynqV`; the earlier v0.0.1 build `QmcPcbZCirWiJik1zxGbhLCw8RSGwYTRWgH6Lx2X6UhHtZ` still answers but predates the `DeedIndex` and `IntentIndex`
   - **12 checks indexed** from two demo runs: 2 passed, 8 blocked, 2 refused, divergence rate 0.8333. RECIPIENT_MISMATCH is the most common finding at 4, and `irreversible` resolves true only for UNBOUNDED_APPROVAL and APPROVAL_FOR_ALL.
   - that reconciliation is the proof the bitfield survives JavaScript to Solidity to AssemblyScript with no drift across 15 bit positions, which is the one thing here that could have been silently wrong without anything failing.
   - 4 overrides, each one a physical confirmation on a Ledger that halted execution until it was tapped. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
 
-- History layer: **run against the deployed subgraph over the network** on Sep 7 2026 with `npm run history`. Eight cases, one round trip each, lookup latency 253 ms min, 267 ms median, 288 ms max. Three verdicts changed because of what the record held. Numbers and the cases are in [What the subgraph decides now](#what-the-subgraph-decides-now).
+- History layer: **run against the deployed subgraph over the network** on Sep 7 2026 with `npm run history`. Eight cases, one round trip each. On the pinned v0.0.2: lookup latency 212 ms min, 260 ms median, 281 ms max; the earlier runs against v0.0.1 measured 253/267/288 ms and 205–297 ms. Three verdicts changed because of what the record held, the same three on both versions. Numbers and the cases are in [What the subgraph decides now](#what-the-subgraph-decides-now).
 
 ## Two defects the subgraph build found
 
@@ -198,7 +198,7 @@ dashboard. Now the gate reads the record over the network before it rules, and
 what it reads can change the ruling.
 
 **What is read.** One GraphQL request to the deployed subgraph
-(`api.studio.thegraph.com/query/1758736/speculum/v0.0.1`, Base Sepolia, set
+(`api.studio.thegraph.com/query/1758736/speculum/v0.0.2`, Base Sepolia, set
 `SUBGRAPH_URL` to read another deployment) answers three questions at once:
 
 - every prior verdict on this exact deed hash, and whether any of them was
@@ -217,8 +217,9 @@ embedded in a gateway URL, and a transport error that echoes the key is
 redacted before it becomes a finding. Both are tested.
 
 **Observed latency.** `npm run history` on Sep 7 2026, eight cases, one read
-each, against the live endpoint indexed to block 46,506,850: 253 ms min,
-267 ms median, 288 ms max per lookup; a second run of the same eight read
+each. Against the pinned v0.0.2, indexed to block 46,507,257: 212 ms min,
+260 ms median, 281 ms max per lookup. Two earlier runs of the same eight
+against v0.0.1, indexed to block 46,506,850, measured 253/267/288 ms and
 205 ms to 297 ms. A wider query with more aliases measured 354 ms to 828 ms. The reader gives up at 8 s and reports that as
 unavailable rather than hanging the gate.
 
@@ -307,15 +308,21 @@ exact, fully declared approval to the Uniswap router was escalated because the
 router is the target of three blocked checks in the record. The five cases
 that did not change were already `BLOCK` or `REFUSE` on their bytes, or were a
 fully declared transfer by an agent whose record could not lower a verified
-pass. Three of eight changed, none softened.
+pass. Three of eight changed, none softened. The output quoted above is from
+the run against v0.0.1; the run against the pinned v0.0.2 changed the same
+three cases, and both versions hold the same six verdicts on that deed hash.
 
 Two endpoint facts worth knowing. Both `v0.0.1` and `v0.0.2` of the subgraph
-hold the same 18 checks; `v0.0.2` adds the `DeedIndex` and `IntentIndex`
-described above, so its overrides resolve and `Agent.overridden` is 8 where
-`v0.0.1` reports 0. The history layer relies on neither and reads `v0.0.1` as
-deployed; nothing in the rules uses `overridden`. And Bytes filters on
-graph-node are case-insensitive, checked by querying the same hash in both
-cases; the reader lowercases anyway.
+answer and are synced to within three blocks of the chain head, holding the
+same 18 checks, 18 declarations and 8 overrides; only `v0.0.2` carries the
+`DeedIndex` and `IntentIndex` described above, so its overrides resolve and
+`Agent.overridden` is 8 where `v0.0.1` reports 0. Five references used to
+disagree on which version to read, and both answering is why nothing failed.
+The version is now written once, in `src/subgraph.js`, and imported by the
+history reader, `bin/verify.js` and `bin/demo.js`; `SUBGRAPH_URL` in the
+environment still takes precedence. And Bytes filters on graph-node are
+case-insensitive, checked by querying the same hash in both cases; the reader
+lowercases anyway.
 
 `bin/demo.js` and `hedera/server.js` still construct the gate without a
 reader, so they rule on merits alone and their results say

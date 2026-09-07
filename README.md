@@ -44,7 +44,7 @@ REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than 
 
 **Unknown selector and unreadable arguments are different failures.** Both refuse, but an operator reading the log needs to know whether the function was unrecognised or merely unparseable. An earlier version conflated them because the check was structurally always true; the test caught it.
 
-**A batch refuses rather than pretending.** A multicall is only as knowable as its least knowable leg. Recursing into each leg is the right answer and is not implemented yet. Claiming otherwise would be the exact failure this project exists to catch.
+**A batch is judged leg by leg and is only as good as its worst leg.** A `multicall(deadline, bytes[])` is decoded one leg at a time with the same decoder, from bytes alone, and the batch takes the worst verdict any leg reached. One unknown or unreadable leg refuses the whole batch, and it is reported as unknown or unreadable rather than collapsed into one class at the batch boundary. Every finding a leg raises names its leg in the detail, so an operator reading the log knows which leg did it. Native value sums across legs; tokens and recipients become sets and each member is compared against the declaration; movements of one asset are summed, because two legs of half the amount still move the whole of it. Nesting and leg count are capped (2 frames, 32 legs) and a batch past either cap refuses with the reason rather than recursing. An earlier version refused every batch outright rather than claim a recursion it did not have.
 
 **An honestly declared unlimited approval is not a lie.** It still blocks, because it is still irreversible, but it is tagged as declared rather than as deception.
 
@@ -56,7 +56,7 @@ REFUSE outranks BLOCK deliberately. A call that cannot be decoded is worse than 
 
 Verified by running, not asserted:
 
-- 97 tests pass, 0 fail. `npm test`
+- 136 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
 - Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Never run against a live node.**
 - Gate and approval binding: built and tested. An approval commits to chainId, target, value and calldata; changing one argument, adding value, or switching chain voids it. Single use, with expiry.

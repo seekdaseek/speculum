@@ -53,9 +53,17 @@ export function decodeFindings(bits) {
  * hash as zero rather than being skipped, otherwise omitting a field would
  * produce a different shape rather than a different value, and two different
  * intents could collide.
+ *
+ * A batch intent declares several actions. They are sorted and joined so the
+ * order the agent listed them in does not change the hash; left alone, the
+ * encoder would stringify the array as given and ['approve','swap'] would
+ * hash differently from ['swap','approve'].
  */
 export function hashIntent(intent) {
   const zeroAddr = '0x0000000000000000000000000000000000000000';
+  const action = Array.isArray(intent.action)
+    ? [...intent.action].sort().join('+')
+    : intent.action ?? '';
   return keccak256(
     encodeAbiParameters(
       [
@@ -64,7 +72,7 @@ export function hashIntent(intent) {
         { type: 'uint256' }, { type: 'bool' },
       ],
       [
-        intent.action ?? '',
+        action,
         BigInt(intent.chainId ?? 0),
         intent.token && intent.token !== 'native' ? intent.token : zeroAddr,
         intent.recipient ?? zeroAddr,

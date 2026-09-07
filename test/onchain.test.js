@@ -74,6 +74,10 @@ check('bits fit uint32', Object.values(FINDING_BITS).filter((b) => b > 31), []);
   const a = { action: 'transfer', chainId: 1, token: USDC, amount: 5n, recipient: ME };
   const b = { recipient: ME, amount: 5n, token: USDC, chainId: 1, action: 'transfer' };
   check('intent hash is key-order independent', hashIntent(a), hashIntent(b));
+  check('batch action order does not change the hash',
+    hashIntent({ ...a, action: ['swap', 'approve'] }), hashIntent({ ...a, action: ['approve', 'swap'] }));
+  check('but a batch intent is not the single-action one',
+    hashIntent({ ...a, action: ['swap', 'approve'] }) === hashIntent(a), false);
 }
 
 // And it must actually distinguish intents that differ, including by omission.

@@ -83,12 +83,13 @@ Verified by running, not asserted:
   - the subgraph indexes from that block; starting from zero would crawl the whole chain
   - an earlier deployment at `0x00d6ceec3a85b0f6288df0005e6649f923e472c4` (block 46426233) is superseded and left on chain. Its ABI contains a function named `declare`, which no subgraph can compile against, which is why it was replaced.
 - Ledger's own ESM build does not resolve under Node: `lib-es` contains extensionless relative imports and `import` throws `ERR_MODULE_NOT_FOUND`. Their packages must be loaded through `createRequire`. Reproduced both ways before working around it.
-- Subgraph: **deployed and synced**, v0.0.2 on Subgraph Studio, Base Sepolia.
-  - query endpoint `https://api.studio.thegraph.com/query/1758736/speculum/v0.0.2`, pinned once in `src/subgraph.js` and imported by everything that reads it
-  - build `QmPi9BvZaN8MtxUJr4rX2Kny21TaRmdPBfAx7VWbDTynqV`; the earlier v0.0.1 build `QmcPcbZCirWiJik1zxGbhLCw8RSGwYTRWgH6Lx2X6UhHtZ` still answers but predates the `DeedIndex` and `IntentIndex`
+- Subgraph: **deployed and synced**, v0.0.3 on Subgraph Studio, Base Sepolia, indexing both contracts.
+  - query endpoint `https://api.studio.thegraph.com/query/1758736/speculum/v0.0.3`, pinned once in `src/subgraph.js` and imported by everything that reads it
+  - build `QmPJf2h1ZQdwmmU1XQe4VTNXK4UDib7uC252PV3J2eK3uc`. Earlier builds still answer: v0.0.2 `QmPi9BvZaN8MtxUJr4rX2Kny21TaRmdPBfAx7VWbDTynqV` predates signed overrides, v0.0.1 `QmcPcbZCirWiJik1zxGbhLCw8RSGwYTRWgH6Lx2X6UhHtZ` predates the `DeedIndex` and `IntentIndex`
+  - second contract `0x304200f5efc39c36db78e24c42f91f4be688673d`, deployed in block 46508257, the one that recovers the approver before it will emit an override; the first, `0xb71db47937d8ddbe1fff208cf5da2727c3f90d9b`, stays indexed from block 46426715
   - **18 checks indexed** from three demo runs of the six cases, two back to back on Sep 5 2026 (blocks 46432987–46433058) and one on Sep 6 (blocks 46450964–46450996), read from v0.0.2 at block 46507336 on Sep 7: 3 passed, 12 blocked, 3 refused. Divergence rate recomputed from those parts, (12 + 3) / 18 = 0.8333, which is what the agent entity stores. RECIPIENT_MISMATCH is the most common finding at 6; every other finding recorded is at 3. `irreversible` resolves true only for the checks carrying UNBOUNDED_APPROVAL or APPROVAL_FOR_ALL, and the finding counters carry the irreversible flag on exactly those two classes.
   - that reconciliation is the proof the bitfield survives JavaScript to Solidity to AssemblyScript with no drift across 15 bit positions, which is the one thing here that could have been silently wrong without anything failing.
-  - 8 overrides. What the chain supports about them, measured on Sep 7 2026 (see [What the chain says about the overrides](#what-the-chain-says-about-the-overrides)): 2 carry a delay no scripted path explains, 22 s and 28 s, the first escalation of each run; 6 are timing-indistinguishable from a script, because the demo's 4 s receipt polling puts the scripted floor at roughly 4 to 6 s and they landed 6 to 8 s after the preceding activity. The 14,435 ms `signPersonalMessage` measurement above was one sample, not a floor. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
+  - 11 overrides. 3 carry a device signature the contract recovered on chain, approver `0xC34b0cdE9646c420Bf53BabaBdB0fd5986fd3E21`, recorded by contract `0x304200f5efc39c36db78e24c42f91f4be688673d` in a demo run of the 6 cases on Sep 7 2026, 531,072 gas total. Device times observed by the demo: 15,031 ms, 4,406 ms and 4,315 ms for the three approvals, and one rejection at 6,417 ms that recorded no override, because a refusal has nothing to prove. `npm run verify` recovers each of the three signatures again off chain from the indexed deed hash, level and reason, and gets the same approver the contract got. Two of the three taps came in under the 4 to 6 s scripted floor measured earlier, so timing could never have proven them; the block-gap analysis in [What the chain says about the overrides](#what-the-chain-says-about-the-overrides) is dead as a method, and the signature is what proves a human now. The 8 overrides from the first contract stay in the record as unproven, `signed: false`, and are never back-claimed. Hedera is **not** on The Graph's supported network list, checked against the full table of 130+ networks, so the verdict log cannot be both Hedera-hosted and Graph-indexed. It deploys to Base Sepolia for indexing and to Hedera separately for the payment rail.
 
 - History layer: **run against the deployed subgraph over the network** on Sep 7 2026 with `npm run history`. Eight cases, one round trip each. On the pinned v0.0.2: lookup latency 212 ms min, 260 ms median, 281 ms max; the earlier runs against v0.0.1 measured 253/267/288 ms and 205–297 ms. Three verdicts changed because of what the record held, the same three on both versions. Numbers and the cases are in [What the subgraph decides now](#what-the-subgraph-decides-now).
 
@@ -250,7 +251,7 @@ dashboard. Now the gate reads the record over the network before it rules, and
 what it reads can change the ruling.
 
 **What is read.** One GraphQL request to the deployed subgraph
-(`api.studio.thegraph.com/query/1758736/speculum/v0.0.2`, Base Sepolia, set
+(`api.studio.thegraph.com/query/1758736/speculum/v0.0.3`, Base Sepolia, set
 `SUBGRAPH_URL` to read another deployment) answers three questions at once:
 
 - every prior verdict on this exact deed hash, and whether any of them was
@@ -413,9 +414,10 @@ chain that could.
 device signature, and every signed one is complete. The eight legacy overrides
 fail it and will keep failing, for the same reason the earlier violation
 stays red: a verifier that learns to look past what it cannot prove proves
-nothing. Against the still-pinned v0.0.2 the script now stops with "the
-pinned subgraph predates signed overrides" rather than silently skipping the
-assertion.
+nothing. Against a subgraph that predates signed overrides the script stops
+with "the pinned subgraph predates signed overrides" rather than silently
+skipping the assertion; that was the behaviour observed against v0.0.2 before
+v0.0.3 was published.
 
 **Verified before deploying, on a real EVM.** `node bin/probe-override.js`
 places the compiled runtime code on `sepolia.base.org` through an `eth_call`
@@ -442,18 +444,25 @@ Sepolia; at the measured gas price of 0.006 gwei the deploy's execution costs
 about 0.0000052 ETH, a 28,640× margin before the L1 data fee, which is small at
 this size.
 
-**Not yet done, deliberately.** The contract is not deployed, the subgraph
-version `v0.0.3` is not published, and no signed override exists on chain,
-because all three need the owner: the deploy spends from the deploy key, the
-publish needs the Studio deploy key, and the demo needs a physical tap.
-`bash bin/release.sh` does the eight steps in order, stops on the first
-failure, reads both keys from a file and a prompt rather than arguments,
-refuses to publish while the manifest still holds the placeholder address,
-and pins `v0.0.3` in `src/subgraph.js` only after the publish. Until it has
-run, `src/deployment.js` holds the zero address and `bin/demo.js` refuses to
-start. The numbers that will come out of that run, real signed overrides and
-the gap they leave between the record and the tap, belong in this file when
-they exist and not before.
+**Done, by the owner, with the device.** `bash bin/release.sh` ran on Sep 7
+2026. The contract deployed to `0x304200f5efc39c36db78e24c42f91f4be688673d`
+in block 46508257, the subgraph published as v0.0.3 and was pinned, and the
+demo ran its 6 cases with the Ledger attached for 531,072 gas in total. Four
+escalations reached the device: three were approved, at 15,031 ms, 4,406 ms
+and 4,315 ms, and one was rejected at 6,417 ms, which recorded nothing. The
+three approvals are on chain as signed overrides, approver
+`0xC34b0cdE9646c420Bf53BabaBdB0fd5986fd3E21`, recovered by the contract from
+the device signature and recovered again by `npm run verify` off chain from
+the indexed deed hash, level and reason, to the same address.
+
+Two of those three taps took less than the 4 to 6 s scripted floor measured
+in [What the chain says about the overrides](#what-the-chain-says-about-the-overrides).
+Timing could never have proven them. That retires the block-gap analysis as a
+method, and it was worth doing once to learn exactly why: a fast human and a
+script leave the same gap, and only a signature over the deed hash tells them
+apart. The 8 overrides from the first contract remain `signed: false`, and
+`npm run verify` keeps failing on them, alongside the historical PASS-linked
+override, because both are true and neither can be changed.
 
 ## Why the approval binds to bytes
 

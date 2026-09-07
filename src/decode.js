@@ -35,15 +35,22 @@ export const ABI = parseAbi([
   'function upgradeToAndCall(address newImplementation, bytes data)',
   // Uniswap V3 SwapRouter
   'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params)',
-  // Uniswap universal-style multicall wrapper
+  // Uniswap multicall wrappers. SwapRouter02 takes a deadline; the V3
+  // SwapRouter does not, and that one is the more common in live agent
+  // traffic. Both carry the legs as bytes[] and decode through one path.
   'function multicall(uint256 deadline, bytes[] data)',
+  'function multicall(bytes[] data)',
 ]);
+
+/** ABI entry per 4-byte selector, so a decoded call can be matched back to
+ *  the signature it came from. Overloads share a name but never a selector. */
+const BY_SELECTOR = new Map(
+  ABI.filter((e) => e.type === 'function').map((e) => [toFunctionSelector(e).toLowerCase(), e]),
+);
 
 /** Every 4-byte selector speculum can decode. Anything outside this set is
  *  unknown, and unknown means refuse rather than guess. */
-export const KNOWN_SELECTORS = new Set(
-  ABI.filter((e) => e.type === 'function').map((e) => toFunctionSelector(e).toLowerCase()),
-);
+export const KNOWN_SELECTORS = new Set(BY_SELECTOR.keys());
 
 /**
  * @typedef {Object} Deed
@@ -210,9 +217,14 @@ function decodeAt(tx, depth) {
       // A batch is only as knowable as its least knowable leg, so every leg is
       // decoded with this same function, from its bytes alone. The legs share
       // the batch's target because multicall delegatecalls into itself, and
-      // this ABI carries no per-leg value, so each leg's value is zero and the
-      // batch's value is whatever rode on the envelope.
-      const legs = args[1];
+      // neither ABI carries a per-leg value, so each leg's value is zero and
+      // the batch's value is whatever rode on the envelope.
+      //
+      // The legs are the bytes[] input, found by type rather than by position
+      // so both overloads decode identically. A deadline, when present, is
+      // ignored: it bounds when the batch may run, not what it does.
+      const inputs = BY_SELECTOR.get(deed.selector).inputs;
+      const legs = args[inputs.findIndex((i) => i.type === 'bytes[]')];
       if (depth >= MAX_DEPTH) {
         deed.flags.push(Finding.ARGUMENTS_UNDECODABLE);
         deed.detail = { [Finding.ARGUMENTS_UNDECODABLE]: `multicall nested ${depth + 1} deep, cap is ${MAX_DEPTH}` };

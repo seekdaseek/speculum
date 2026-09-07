@@ -305,6 +305,63 @@ const detailOf = (r, code) => r.findings.filter((f) => f.code === code).map((f) 
   check('and it says why', r.findings[0].detail.includes(`cap is ${MAX_DEPTH}`), true);
 }
 
+// ---------------------------------------- the V3 SwapRouter overload, no deadline
+// Same legs, second selector. The deadline is not load-bearing: the two
+// overloads must decode to identical legs, and the caps must hold for both.
+const batchV3 = (legs) => call('multicall', [legs]);
+const legsJson = (r) => JSON.stringify(r.deed.legs, (k, v) => (typeof v === 'bigint' ? `${v}n` : v));
+
+{
+  const intent = {
+    action: ['approve', 'swap'], chainId: 1, token: USDC, amount: 1000_000000n,
+    spender: ROUTER, recipient: ME,
+  };
+  const legs = [call('approve', [ROUTER, 1000_000000n]), call('exactInputSingle', [swapParams(ME, 1000_000000n)])];
+  const v3 = compare(intent, { to: USDC, data: batchV3(legs), value: 0n, chainId: 1 });
+  const v2 = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('no-deadline overload has its own selector', v3.deed.selector, '0xac9650d8');
+  check('and it is not the deadline one', v3.deed.selector === v2.deed.selector, false);
+  check('V3-shaped batch decodes into legs', v3.deed.legs?.length, 2);
+  check('V3-shaped batch does not refuse', v3.level, Level.PASS);
+  check('both overloads decode the same legs byte for byte', legsJson(v3), legsJson(v2));
+  check('and reach the same verdict', v3.level, v2.level);
+}
+
+// the same divergence is found through either overload, naming the same leg
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 100n, recipient: ME };
+  const legs = [call('transfer', [ME, 100n]), call('transfer', [THEM, 100n])];
+  const v3 = compare(intent, { to: USDC, data: batchV3(legs), value: 0n, chainId: 1 });
+  const v2 = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('findings identical across overloads', JSON.stringify(v3.findings), JSON.stringify(v2.findings));
+  check('and the leg is named', detailOf(v3, Finding.RECIPIENT_MISMATCH)[0].startsWith('leg 1:'), true);
+}
+
+// depth cap on the no-deadline overload, including when the frames are mixed
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n, recipient: THEM };
+  let data = call('transfer', [THEM, 1n]);
+  for (let i = 0; i < MAX_DEPTH; i++) data = batchV3([data]);
+  const r = compare(intent, { to: USDC, data, value: 0n, chainId: 1 });
+  check('V3 nesting past the depth cap refuses', r.level, Level.REFUSE);
+  check('with the reason', r.findings[0].detail.includes(`cap is ${MAX_DEPTH}`), true);
+
+  let mixed = call('transfer', [THEM, 1n]);
+  for (let i = 0; i < MAX_DEPTH; i++) mixed = i % 2 ? batch([mixed]) : batchV3([mixed]);
+  const m = compare(intent, { to: USDC, data: mixed, value: 0n, chainId: 1 });
+  check('mixed overloads count toward the same depth', m.level, Level.REFUSE);
+}
+
+// leg cap on the no-deadline overload
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n, recipient: THEM };
+  const r = compare(intent, { to: USDC, data: batchV3(Array(MAX_LEGS + 1).fill(call('transfer', [THEM, 1n]))), value: 0n, chainId: 1 });
+  check('V3 batch over the leg cap refuses', r.level, Level.REFUSE);
+  check('with the count', r.findings[0].detail, `${MAX_LEGS + 1} legs, cap is ${MAX_LEGS}`);
+  const ok = compare(intent, { to: USDC, data: batchV3(Array(MAX_LEGS).fill(call('transfer', [THEM, 1n]))), value: 0n, chainId: 1 });
+  check('and exactly at the cap still decodes', ok.deed.legs?.length, MAX_LEGS);
+}
+
 // more legs than the cap refuses without decoding any of them
 {
   const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n, recipient: THEM };

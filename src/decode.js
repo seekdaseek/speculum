@@ -13,6 +13,14 @@ const MAX_UINT256 = (1n << 256n) - 1n;
 // token supply, so it is treated the same.
 const UNBOUNDED_FLOOR = 1n << 200n;
 
+// A batch is decoded one leg at a time, and a leg may itself be a batch. Both
+// dimensions are capped so the decoder is bounded by construction rather than
+// by trusting the calldata to be finite. Past either cap it refuses; it never
+// loops. MAX_DEPTH counts multicall frames: the outer call is frame 1, a
+// multicall leg inside it is frame 2, and a multicall inside that is refused.
+const MAX_DEPTH = 2;
+const MAX_LEGS = 32;
+
 export const ABI = parseAbi([
   'function transfer(address to, uint256 amount)',
   'function transferFrom(address from, address to, uint256 amount)',
@@ -51,6 +59,14 @@ export const KNOWN_SELECTORS = new Set(
  * @property {string}  target       the contract being called
  * @property {string}  [selector]
  * @property {string[]} flags       findings the bytes raise on their own
+ * @property {Object<string,string>} [detail]  what the decoder knows about a
+ *                                  flag beyond its code, keyed by code
+ * @property {Deed[]}  [legs]       for a batch, one Deed per leg, in order,
+ *                                  each with its `index`
+ * @property {string[]} [actions]   for a batch, the distinct actions across legs
+ * @property {string[]} [assets]    for a batch, the distinct tokens across legs
+ * @property {string[]} [recipients] for a batch, the distinct recipients
+ * @property {string[]} [spenders]  for a batch, the distinct spenders
  */
 
 const norm = (a) => {
@@ -63,6 +79,15 @@ const norm = (a) => {
  * @returns {Deed}
  */
 export function decode(tx) {
+  return decodeAt(tx, 1);
+}
+
+/**
+ * @param tx     the call to decode; for a leg, the leg's bytes with the
+ *               batch's target and chain
+ * @param depth  how many multicall frames enclose this call, counting itself
+ */
+function decodeAt(tx, depth) {
   const deed = {
     value: BigInt(tx.value ?? 0),
     chainId: tx.chainId,
@@ -73,7 +98,10 @@ export function decode(tx) {
   const data = tx.data ?? '0x';
 
   // A bare value send with no calldata is a native transfer. Fully determined.
-  if (data === '0x' || data === '') {
+  // Only at the top: an empty leg inside a batch is a delegatecall into the
+  // fallback, which is not a transfer of anything, so it falls through to the
+  // malformed check below rather than being reported as a zero-value send.
+  if (depth === 1 && (data === '0x' || data === '')) {
     deed.action = Action.TRANSFER;
     deed.asset = 'native';
     deed.amount = deed.value;
@@ -178,12 +206,37 @@ export function decode(tx) {
       deed.flags.push(Finding.PROXY_UPGRADE);
       break;
 
-    case 'multicall':
-      // A batch is only as knowable as its least knowable leg. Rather than
-      // pretend otherwise, refuse and say why. Recursing into each leg is the
-      // right long-term answer; claiming to have done it would be a lie.
-      deed.flags.push(Finding.ARGUMENTS_UNDECODABLE);
+    case 'multicall': {
+      // A batch is only as knowable as its least knowable leg, so every leg is
+      // decoded with this same function, from its bytes alone. The legs share
+      // the batch's target because multicall delegatecalls into itself, and
+      // this ABI carries no per-leg value, so each leg's value is zero and the
+      // batch's value is whatever rode on the envelope.
+      const legs = args[1];
+      if (depth >= MAX_DEPTH) {
+        deed.flags.push(Finding.ARGUMENTS_UNDECODABLE);
+        deed.detail = { [Finding.ARGUMENTS_UNDECODABLE]: `multicall nested ${depth + 1} deep, cap is ${MAX_DEPTH}` };
+        break;
+      }
+      if (legs.length > MAX_LEGS) {
+        deed.flags.push(Finding.ARGUMENTS_UNDECODABLE);
+        deed.detail = { [Finding.ARGUMENTS_UNDECODABLE]: `${legs.length} legs, cap is ${MAX_LEGS}` };
+        break;
+      }
+      deed.legs = legs.map((bytes, index) => ({
+        index,
+        ...decodeAt({ to: tx.to, data: bytes, value: 0n, chainId: tx.chainId }, depth + 1),
+      }));
+
+      // What the batch does as a whole: value summed, everything else a set.
+      const leaves = flatten(deed.legs);
+      for (const leg of deed.legs) deed.value += leg.value;
+      deed.actions = uniq(leaves.map((l) => l.action));
+      deed.assets = uniq(leaves.map((l) => l.asset));
+      deed.recipients = uniq(leaves.map((l) => l.recipient));
+      deed.spenders = uniq(leaves.map((l) => l.spender));
       break;
+    }
 
     default:
       deed.flags.push(Finding.UNKNOWN_SELECTOR);
@@ -192,4 +245,16 @@ export function decode(tx) {
   return deed;
 }
 
-export { MAX_UINT256, UNBOUNDED_FLOOR };
+const uniq = (xs) => [...new Set(xs.filter((x) => x != null))];
+
+/** Every leg of a batch that is itself a single call, nested batches opened. */
+function flatten(legs) {
+  const out = [];
+  for (const leg of legs) {
+    if (leg.legs) out.push(...flatten(leg.legs));
+    else out.push(leg);
+  }
+  return out;
+}
+
+export { MAX_UINT256, UNBOUNDED_FLOOR, MAX_DEPTH, MAX_LEGS };

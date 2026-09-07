@@ -7,7 +7,7 @@
 import { encodeFunctionData, parseAbi } from 'viem';
 import { compare, headline } from '../src/compare.js';
 import { Level, Finding } from '../src/types.js';
-import { ABI } from '../src/decode.js';
+import { ABI, MAX_DEPTH, MAX_LEGS } from '../src/decode.js';
 
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
@@ -168,7 +168,9 @@ function has(name, result, code) {
   const r3 = compare(intent, {
     to: ROUTER, data: call('multicall', [0n, ['0x1234']]), value: 0n, chainId: 1,
   });
-  check('undecodable batch refuses', r3.level, Level.REFUSE);
+  check('batch with a malformed leg refuses', r3.level, Level.REFUSE);
+  has('and says the leg is malformed', r3, Finding.MALFORMED_CALLDATA);
+  check('and names the leg', r3.findings[0].detail, 'leg 0');
 }
 
 // --------------------------- a refusal must never be softened into a pass
@@ -176,6 +178,141 @@ function has(name, result, code) {
   const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n, recipient: THEM };
   const r = compare(intent, { to: USDC, data: '0xdeadbeef' + '00'.repeat(32), value: 0n, chainId: 1 });
   check('unknown selector with padding still refuses', r.level, Level.REFUSE);
+}
+
+// ------------------------------------------------------------------ batches
+// A multicall is decoded leg by leg. Every leg of `multicall(deadline, bytes[])`
+// runs against the batch's own target, since the router delegatecalls into
+// itself, so an approve leg can only ever approve the target's token. The
+// clean batch below is addressed to the token for exactly that reason. The
+// intent declares every action the batch performs.
+const batch = (legs) => call('multicall', [0n, legs]);
+const swapParams = (recipient, amountIn) => ({
+  tokenIn: USDC, tokenOut: WETH, fee: 500, recipient,
+  amountIn, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n,
+});
+const detailOf = (r, code) => r.findings.filter((f) => f.code === code).map((f) => f.detail);
+
+// exact approve, then the swap it enables, declared as both
+{
+  const intent = {
+    action: ['approve', 'swap'], chainId: 1, token: USDC, amount: 1000_000000n,
+    spender: ROUTER, recipient: ME,
+  };
+  const legs = [call('approve', [ROUTER, 1000_000000n]), call('exactInputSingle', [swapParams(ME, 1000_000000n)])];
+  const r = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('clean two-leg batch passes', r.level, Level.PASS);
+  check('clean batch has no findings', r.findings.length, 0);
+  check('both legs decoded', r.deed.legs.length, 2);
+  check('leg 0 is the approve', r.deed.legs[0].action, 'approve');
+  check('leg 1 is the swap', r.deed.legs[1].action, 'swap');
+  check('actions collected as a set', r.deed.actions.join(','), 'approve,swap');
+  check('assets collapse to the one token', r.deed.assets.join(','), USDC);
+  check('recipients collected', r.deed.recipients.join(','), ME);
+}
+
+// one leg approves without bound where an exact amount was declared
+{
+  const intent = {
+    action: ['approve', 'swap'], chainId: 1, token: USDC, amount: 1000_000000n,
+    spender: ROUTER, recipient: ME,
+  };
+  const legs = [call('approve', [ROUTER, MAX]), call('exactInputSingle', [swapParams(ME, 1000_000000n)])];
+  const r = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('unbounded approval leg blocks the batch', r.level, Level.BLOCK);
+  has('unbounded approval named', r, Finding.UNBOUNDED_APPROVAL);
+  check('and the finding names the leg', detailOf(r, Finding.UNBOUNDED_APPROVAL)[0], 'leg 0');
+  check('the amount excess names the leg too', detailOf(r, Finding.AMOUNT_EXCEEDS_INTENT)[0].startsWith('leg 0:'), true);
+  check('batch is irreversible', r.irreversible, true);
+}
+
+// one leg is a selector speculum does not know: the whole batch refuses
+{
+  const intent = { action: ['approve', 'swap'], chainId: 1, token: USDC, amount: 1000_000000n, spender: ROUTER };
+  const legs = [call('approve', [ROUTER, 1000_000000n]), '0xdeadbeef'];
+  const r = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('unknown leg refuses the batch', r.level, Level.REFUSE);
+  check('exactly one finding, no pile', r.findings.length, 1);
+  check('it is the unknown selector', r.findings[0].code, Finding.UNKNOWN_SELECTOR);
+  check('and it names the leg', r.findings[0].detail, 'leg 1: selector 0xdeadbeef');
+}
+
+// unknown selector and unreadable arguments stay distinct inside a batch
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n };
+  const truncated = call('approve', [ROUTER, 1n]).slice(0, 20);
+  const legs = ['0xdeadbeef', truncated];
+  const r = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('both legs refuse', r.level, Level.REFUSE);
+  check('leg 0 is unknown', detailOf(r, Finding.UNKNOWN_SELECTOR)[0], 'leg 0: selector 0xdeadbeef');
+  check('leg 1 is known but unreadable', detailOf(r, Finding.ARGUMENTS_UNDECODABLE)[0], 'leg 1: selector 0x095ea7b3');
+}
+
+// a leg-level mismatch names its leg
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 100n, recipient: ME };
+  const legs = [call('transfer', [ME, 100n]), call('transfer', [THEM, 100n])];
+  const r = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  has('foreign recipient in leg 1 named', r, Finding.RECIPIENT_MISMATCH);
+  check('with its leg index', detailOf(r, Finding.RECIPIENT_MISMATCH)[0].startsWith('leg 1:'), true);
+}
+
+// two legs each within the declared amount still move more than declared
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 100n, recipient: THEM };
+  const legs = [call('transfer', [THEM, 60n]), call('transfer', [THEM, 60n])];
+  const r = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('split movement blocks', r.level, Level.BLOCK);
+  check('and names both legs', detailOf(r, Finding.AMOUNT_EXCEEDS_INTENT)[0], 'legs 0, 1: declared 100, calldata moves 120 between them');
+}
+
+// a leg whose action the intent never declared
+{
+  const intent = { action: 'swap', chainId: 1, token: USDC, amount: 1000_000000n, recipient: ME };
+  const legs = [call('approve', [ROUTER, 1000_000000n]), call('exactInputSingle', [swapParams(ME, 1000_000000n)])];
+  const r = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('undeclared approve leg blocks', r.level, Level.BLOCK);
+  check('and names it', detailOf(r, Finding.ACTION_MISMATCH)[0], 'leg 0: declared swap, calldata performs approve');
+}
+
+// native value on the envelope is the batch's value
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n, recipient: THEM };
+  const r = compare(intent, { to: USDC, data: batch([call('transfer', [THEM, 1n])]), value: 7n, chainId: 1 });
+  has('undeclared value on a batch named', r, Finding.NATIVE_VALUE_UNDECLARED);
+  check('batch value is the envelope plus every leg', r.deed.value, 7n);
+}
+
+// nesting: one batch inside another is within the cap and its legs get a path
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n, recipient: THEM };
+  let data = call('transfer', [ME, 1n]);
+  for (let i = 1; i < MAX_DEPTH; i++) data = batch([data]);
+  const r = compare(intent, { to: USDC, data, value: 0n, chainId: 1 });
+  check('nested batch within the cap decodes', r.level, Level.BLOCK);
+  check('and the path reaches the inner leg', detailOf(r, Finding.RECIPIENT_MISMATCH)[0].startsWith(`leg ${Array(MAX_DEPTH - 1).fill('0').join('.')}:`), true);
+}
+
+// nesting past the depth cap refuses instead of recursing
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n, recipient: THEM };
+  let data = call('transfer', [THEM, 1n]);
+  for (let i = 0; i < MAX_DEPTH; i++) data = batch([data]);
+  const r = compare(intent, { to: USDC, data, value: 0n, chainId: 1 });
+  check('nested past the depth cap refuses', r.level, Level.REFUSE);
+  has('as unreadable arguments, not unknown', r, Finding.ARGUMENTS_UNDECODABLE);
+  check('exactly one finding', r.findings.length, 1);
+  check('and it says why', r.findings[0].detail.includes(`cap is ${MAX_DEPTH}`), true);
+}
+
+// more legs than the cap refuses without decoding any of them
+{
+  const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 1n, recipient: THEM };
+  const legs = Array(MAX_LEGS + 1).fill(call('transfer', [THEM, 1n]));
+  const r = compare(intent, { to: USDC, data: batch(legs), value: 0n, chainId: 1 });
+  check('too many legs refuses', r.level, Level.REFUSE);
+  check('with the count', r.findings[0].detail, `${MAX_LEGS + 1} legs, cap is ${MAX_LEGS}`);
+  check('and no legs were decoded', r.deed.legs, undefined);
 }
 
 // -------------------------------------------------- tolerance behaves as set

@@ -4,7 +4,8 @@
 // confirmation that does not commit to specific bytes is worse than none,
 // because it manufactures a record of consent for something nobody saw.
 
-import { encodeFunctionData, encodeAbiParameters, parseAbi, getAddress } from 'viem';
+import { encodeFunctionData, encodeAbiParameters, parseAbi, getAddress, recoverMessageAddress } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { Gate, LedgerPort } from '../src/gate.js';
 import { Level, Finding } from '../src/types.js';
 import { ABI } from '../src/decode.js';
@@ -151,6 +152,53 @@ const intent = { action: 'transfer', chainId: 1, token: USDC, amount: 100n, reci
   check('findings non-zero for a block', rec.findings > 0, true);
   const clean = g.toRecord(await g.check(intent, honestTx));
   check('clean record satisfies the contract invariant', clean.level === 0 && clean.findings === 0, true);
+}
+
+// ---------------------------------------- an approval that can prove itself
+// A port that signs the way the device does: EIP-191 over the exact message,
+// returning the signature with the parts that went into it. The key is a
+// throwaway local account, so the signature is real secp256k1, not a stub.
+{
+  const key = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
+  const approver = privateKeyToAccount(key);
+  const signingPort = {
+    async request({ deedHash, level, findings }) {
+      const reason = findings[0].why;
+      const signature = await approver.signMessage({ message: LedgerPort.message({ deedHash, level, reason }) });
+      return { address: approver.address, signature, level, reason };
+    },
+  };
+  const g = new Gate({ confirm: signingPort });
+  const bad = { to: USDC, data: call('transfer', [SIGNER, 100n]), value: 0n, chainId: 1 };
+  const r = await g.check(intent, bad);
+  check('signing port approves', await g.escalate(r), true);
+  const p = g.proof(r);
+  check('proof names the deed', p.deedHash, r.deedHash);
+  check('proof carries the level code the contract expects', p.level, 1);
+  check('proof carries the reason shown', p.reason, r.findings[0].why);
+  check('proof signature is 65 bytes', p.signature.length, 2 + 130);
+  check('proof message is the device message', p.message, LedgerPort.message({ deedHash: r.deedHash, level: 'BLOCK', reason: p.reason }));
+  check('the signature recovers to the approver', await recoverMessageAddress({ message: p.message, signature: p.signature }), approver.address);
+  check('and authorise still binds to the bytes', g.authorise(bad).ok, true);
+  check('authorise names the approver', g.authorise({ ...bad, value: 0n }).ok, false);
+}
+{
+  // A port that answers with an address alone is remembered, but cannot be
+  // proven: there is nothing to put on chain.
+  const g = new Gate({ confirm: alwaysApprove });
+  const bad = { to: USDC, data: call('transfer', [SIGNER, 100n]), value: 0n, chainId: 1 };
+  const r = await g.check(intent, bad);
+  await g.escalate(r);
+  check('an address-only approval authorises locally', g.authorise(bad).ok, true);
+  check('but has no proof', g.proof(r), null);
+  check('no approval at all has no proof', new Gate().proof(r), null);
+}
+{
+  const r = 'a'.repeat(64), s = 'b'.repeat(64);
+  check('encode packs r s v with v 27', LedgerPort.encode({ r, s, v: 27 }), `0x${r}${s}1b`);
+  check('encode normalises v 0 to 27', LedgerPort.encode({ r, s, v: 0 }), `0x${r}${s}1b`);
+  check('encode normalises v 1 to 28', LedgerPort.encode({ r, s, v: 1 }), `0x${r}${s}1c`);
+  check('encode leaves v 28 alone', LedgerPort.encode({ r, s, v: 28 }), `0x${r}${s}1c`);
 }
 
 // ------------------------------------- the device message names the exact deed

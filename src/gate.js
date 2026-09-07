@@ -120,15 +120,50 @@ export class Gate {
    */
   async escalate(result) {
     if (!this.confirm) throw new Error('no confirmation port configured');
-    const approver = await this.confirm.request({
+    const answer = await this.confirm.request({
       deedHash: result.deedHash,
       level: result.level,
       findings: result.findings,
       deed: result.deed,
     });
-    if (!approver) return false;
-    this.approvals.set(result.deedHash, { approver, at: this.now(), used: false });
+    if (!answer) return false;
+    // A port may answer with an address alone, or with the signature it
+    // obtained and the message parts that were signed. Only the second kind
+    // can be proven later; the first is remembered as an approval the gate
+    // saw but cannot show anyone.
+    const a = typeof answer === 'string' ? { address: answer } : answer;
+    this.approvals.set(result.deedHash, {
+      approver: a.address,
+      signature: a.signature ?? null,
+      level: a.level ?? result.level,
+      reason: a.reason ?? null,
+      at: this.now(),
+      used: false,
+    });
     return true;
+  }
+
+  /**
+   * What the recorder needs to put an override on chain, or null when the
+   * approval cannot be proven.
+   *
+   * The contract will only emit an override it can recover a signer from, so
+   * an approval with no signature has nowhere to go on chain. That is
+   * deliberate: the alternative is recording "a human approved" on the word
+   * of whoever called this, which is the claim the old record made eight
+   * times and could not back.
+   */
+  proof(result) {
+    const rec = this.approvals.get(result.deedHash);
+    if (!rec || !rec.signature) return null;
+    return {
+      deedHash: result.deedHash,
+      level: LEVEL_CODE[rec.level],
+      reason: rec.reason,
+      signature: rec.signature,
+      approver: rec.approver,
+      message: LedgerPort.message({ deedHash: result.deedHash, level: rec.level, reason: rec.reason }),
+    };
   }
 
   /**
@@ -204,6 +239,12 @@ export class LedgerPort {
     ].join('\n');
   }
 
+  /**
+   * Returns the approver's address together with the signature the device
+   * produced and the exact parts that went into the signed message, so the
+   * contract can rebuild the message and recover the same address. Returns
+   * null on any refusal or failure; see classify() for which.
+   */
   async request({ deedHash, level, findings }) {
     const reason = findings.length ? findings[0].why : 'no reason recorded';
     const message = LedgerPort.message({ deedHash, level, reason });
@@ -216,7 +257,8 @@ export class LedgerPort {
         this.path,
         Buffer.from(message, 'utf8').toString('hex'),
       );
-      return sig ? address : null;
+      if (!sig) return null;
+      return { address, signature: LedgerPort.encode(sig), level, reason };
     } catch (err) {
       // Several very different events land here and none of them approve
       // anything, so all return null. But an operator staring at a stuck agent
@@ -237,6 +279,17 @@ export class LedgerPort {
    * the dashboard is answering instead. Treating that as a refusal would
    * record a human decision that never happened.
    */
+  /**
+   * Pack the device's {r, s, v} into the 65-byte form the contract reads.
+   * hw-app-eth returns v as a number that is 27/28 on most firmware and 0/1
+   * on some; the contract accepts both, and this normalises to 27/28 anyway
+   * so the bytes on chain are the same whichever firmware signed.
+   */
+  static encode({ r, s, v }) {
+    const vv = Number(v) < 27 ? Number(v) + 27 : Number(v);
+    return `0x${r}${s}${vv.toString(16).padStart(2, '0')}`;
+  }
+
   static classify(err) {
     const msg = String(err?.message ?? err);
     const code = err?.statusCode;

@@ -14,7 +14,7 @@
 // Agent.overridden is 0; on v0.0.2 they resolve and it is 8. v0.0.2 is the
 // build of the schema and mappings committed in subgraph/.
 
-export const SUBGRAPH_URL = 'https://api.studio.thegraph.com/query/1758736/speculum/v0.0.2';
+export const SUBGRAPH_URL = 'https://api.studio.thegraph.com/query/1758736/speculum/v0.0.3';
 
 /** The endpoint to read, honouring the environment override. */
 export const subgraphUrl = () => process.env.SUBGRAPH_URL ?? SUBGRAPH_URL;

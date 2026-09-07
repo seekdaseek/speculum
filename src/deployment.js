@@ -11,7 +11,7 @@
 export const LEGACY_CONTRACT = '0xb71db47937d8ddbe1fff208cf5da2727c3f90d9b';
 export const LEGACY_DEPLOY_BLOCK = 46426715;
 
-export const CONTRACT = '0x0000000000000000000000000000000000000000';
-export const DEPLOY_BLOCK = 0;
+export const CONTRACT = '0x304200f5efc39c36db78e24c42f91f4be688673d';
+export const DEPLOY_BLOCK = 46508257;
 
 export const contractAddress = () => process.env.SPECULUM_CONTRACT ?? CONTRACT;

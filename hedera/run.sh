@@ -4,8 +4,13 @@
 #   ./hedera/run.sh
 #
 # Starts the service, waits for it, runs the paying agent against it, then
-# shuts the service down. The private key is read at a prompt and lives only in
-# this shell, never in an argument and never in history.
+# shuts the service down. Keys are read at a prompt and live only in this
+# shell, never in an argument and never in history.
+#
+# The audit trail is optional here. Give an operator key and the service
+# writes every verdict to HCS; give no topic and one is created first. Leave
+# the operator key empty and the run is paid but not audited, and the service
+# says so.
 
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -19,7 +24,7 @@ cleanup() {
     kill "$SRV_PID" 2>/dev/null
     wait "$SRV_PID" 2>/dev/null
   fi
-  unset AGENT_KEY
+  unset AGENT_KEY OPERATOR_KEY
 }
 trap cleanup EXIT INT TERM
 
@@ -41,8 +46,42 @@ if [ "$SERVICE_ID" = "$AGENT_ID" ]; then
 fi
 
 echo
+echo "audit trail on HCS (optional, leave the key empty to skip)"
+printf 'operator account id (pays the HCS fee, e.g. 0.0.10386821):   '
+read -r OPERATOR_ID
+printf 'operator private key (hidden, ECDSA hex):                   '
+read -rs OPERATOR_KEY
+echo
+printf 'topic id (leave empty to create one now):                   '
+read -r TOPIC_ID
+
+if [ -n "$OPERATOR_KEY" ] && [ -z "$OPERATOR_ID" ]; then
+  echo "an operator key needs its account id"
+  exit 1
+fi
+if [ -n "$OPERATOR_KEY" ] && [ -z "$TOPIC_ID" ]; then
+  echo
+  echo "creating the audit topic"
+  TOPIC_OUT=$(HEDERA_OPERATOR_ID="$OPERATOR_ID" HEDERA_OPERATOR_KEY="$OPERATOR_KEY" node hedera/topic.js) || {
+    echo "$TOPIC_OUT"
+    echo "topic creation failed, nothing else run"
+    exit 1
+  }
+  echo "$TOPIC_OUT"
+  TOPIC_ID=$(printf '%s\n' "$TOPIC_OUT" | sed -n 's/^topic  *//p' | head -1)
+  if [ -z "$TOPIC_ID" ]; then
+    echo "could not read the topic id back, nothing else run"
+    exit 1
+  fi
+fi
+
+echo
 echo "starting the service on port $PORT"
-HEDERA_ACCOUNT_ID="$SERVICE_ID" PORT="$PORT" node hedera/server.js > "$LOG" 2>&1 &
+HEDERA_ACCOUNT_ID="$SERVICE_ID" PORT="$PORT" \
+HEDERA_OPERATOR_ID="${OPERATOR_KEY:+$OPERATOR_ID}" \
+HEDERA_OPERATOR_KEY="$OPERATOR_KEY" \
+HEDERA_TOPIC_ID="${OPERATOR_KEY:+$TOPIC_ID}" \
+  node hedera/server.js > "$LOG" 2>&1 &
 SRV_PID=$!
 
 # Wait for it to actually answer rather than sleeping a guessed number of
@@ -74,10 +113,12 @@ HEDERA_PRIVATE_KEY="$AGENT_KEY" \
 STATUS=$?
 echo "════════════════════════════════════════════════════════════"
 
-if [ "$STATUS" != 0 ]; then
+echo
+echo "service log:"
+cat "$LOG"
+if [ -n "$OPERATOR_KEY" ] && [ "$STATUS" = 0 ]; then
   echo
-  echo "the agent exited $STATUS. service log:"
-  cat "$LOG"
+  echo "check the trail yourself, no key needed:  node hedera/audit-verify.js $TOPIC_ID"
 fi
 
 exit "$STATUS"

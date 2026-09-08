@@ -4,7 +4,7 @@
   "description": "Checks whether an AI agent declared intent matches the transaction it is about to sign",
   "main": "index.js",
   "scripts": {
-    "test": "node test/compare.test.js && node test/onchain.test.js && node test/simulate.test.js && node test/gate.test.js && node test/history.test.js",
+    "test": "node test/compare.test.js && node test/onchain.test.js && node test/simulate.test.js && node test/gate.test.js && node test/history.test.js && node test/audit.test.js",
     "compile": "node bin/compile.js",
     "deploy": "node bin/deploy.js",
     "demo": "node bin/demo.js",
@@ -13,12 +13,15 @@
     "probe:override": "node bin/probe-override.js",
     "release": "bash bin/release.sh",
     "serve": "node hedera/server.js",
-    "agent": "node hedera/agent.js"
+    "agent": "node hedera/agent.js",
+    "topic": "node hedera/topic.js",
+    "audit": "node hedera/audit-verify.js"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@hiero-ledger/sdk": "2.85.0",
     "@ledgerhq/hw-app-eth": "^7.8.16",
     "@ledgerhq/hw-transport-node-hid": "^6.33.5",
     "@x402/hedera": "^2.25.0",

@@ -58,7 +58,7 @@ There is a fourth ruling, `UNDETERMINED-ON-HISTORY`, for when the bytes were jud
 
 Verified by running, not asserted:
 
-- 281 tests pass, 0 fail. `npm test`
+- 301 tests pass, 0 fail. `npm test`
 - Divergence engine and decoder: built and tested offline against calldata encoded with viem, so the bytes under test are real bytes.
 - Simulation layer: built, tested against a scripted RPC. It catches what decoding cannot, including fee-on-transfer tokens moving more than the argument states and undeclared assets leaving the sender. **Run against a live node** on Sep 7 2026 with `node bin/probe-sim.js`: `verifyEffect` through the project's own `jsonRpc` transport against `ethereum-rpc.publicnode.com`, mainnet state at block 25,925,120, sender Circle's EOA holding 53.1M USDC, one `USDC.transfer` of 100 USDC to the burn address. Observed, not assumed:
   - declared 100 USDC: `PASS`, delta `-100000000`, no findings.
@@ -139,14 +139,55 @@ The gate is also sold by the call. An agent posts what it says it is about to
 do and the calldata it is about to sign, pays in HBAR over x402, and gets the
 verdict back. No account, no API key, no subscription.
 
-A real payment has settled on Hedera testnet through the Blocky402 facilitator:
-100,000 tinybar for a `decode` tier check, settlement
-`0.0.7162784@1788674101.284043818`, verdict `BLOCK` on `RECIPIENT_MISMATCH`.
+**Network: Hedera testnet**, settled through the hosted Blocky402 facilitator
+at `https://api.testnet.blocky402.com`. Blocky402 also hosts a mainnet
+facilitator; this service is not pointed at it.
+
+**Live endpoint: `https://speculum.ochinimus.app`**, hosted since Sep 8 2026
+and observed from outside that day: `GET /health` 200 in 165 ms at the
+Cloudflare edge, and an unpaid `POST /check` answered 402 with the payment
+challenge in 124, 129 and 241 ms across three tries.
+
+**Price per call**, metered rather than flat: 100,000 tinybar (0.001 HBAR)
+for a decode check, 500,000 tinybar (0.005 HBAR) for one that adds a live
+balance simulation. A decode-only check is pure computation while a simulated
+one costs an RPC round trip; one flat price would overcharge the first or
+subsidise the second. The price is quoted in the 402 and charged against the
+service's own quote, never the client's copy of it.
+
+**Payment flow.** Unpaid `POST /check` with `{ intent, tx }` returns 402 and
+`accepts: [requirements]`: `hedera:testnet`, HBAR as asset `0.0.0`, the amount
+in tinybar, and the facilitator's fee payer read fresh from `/supported` on
+every quote. The agent signs a `TransferTransaction` for exactly that amount
+with `@x402/hedera` and retries with the payload base64 in `X-PAYMENT`. The
+service asks the facilitator to `/verify`, then `/settle`, and only then runs
+the engine. The response names the verdict (`PASS`, `BLOCK`, `REFUSE`), the
+outcome (`match`, `divergence`, `undeterminable`), the divergence classes, the
+effects the decoder derived, both hashes, the settlement reference, and the
+audit record.
+
+**Settlement reference.** `0.0.7162784@1788674101.284043818`: 100,000 tinybar
+from agent `0.0.10387590` to service `0.0.10386821`, `CRYPTOTRANSFER SUCCESS`
+at consensus `1788674105.877638999`, re-read from the testnet mirror node on
+Sep 8 2026. The agent had declared it was sending 100 USDC to itself; the
+calldata sent it elsewhere; the verdict was `BLOCK` on `RECIPIENT_MISMATCH`.
 The agent paid to be told no about its own transaction.
 
-Pricing is metered rather than flat, because a decode-only check is pure
-computation while a simulated one costs an RPC round trip. Full detail in
-[hedera/README.md](hedera/README.md).
+**Audit trail.** Every paid verdict is written to a Hedera Consensus Service
+topic: the intent hash, the deed hash, the verdict, the finding codes, and the
+settlement that paid for it. `node hedera/audit-verify.js 0.0.<topic>` reads
+the topic from the public mirror node and checks each settlement against the
+ledger, with no key and no account. The hosted service reports
+`audit.hcs: false` until an operator key and a topic are configured; that is
+the owner's step, it has not happened yet, and nothing here claims a topic
+that does not exist. The same goes for the divergence run the agent now
+performs, an unlimited approval declared as exact: the engine blocks it
+offline in the tests, and the paid run against the live endpoint waits on the
+agent's key.
+
+Setup, architecture, the wire-level flow and the list of what has and has not
+been observed are in [hedera/README.md](hedera/README.md). The brief this was
+built against is [hedera/BRIEF.md](hedera/BRIEF.md), kept verbatim.
 
 ## `npm run verify` fails, on purpose
 
@@ -479,6 +520,13 @@ bytes.
 ```
 npm install
 npm test
+```
+
+The paid service, and an agent that buys two checks from it:
+
+```
+HEDERA_ACCOUNT_ID=0.0.<service> npm run serve
+SERVICE=https://speculum.ochinimus.app HEDERA_ACCOUNT_ID=0.0.<agent> HEDERA_PRIVATE_KEY=0x<ecdsa> npm run agent
 ```
 
 ## AI attribution

@@ -13,6 +13,7 @@ mainnet facilitator at `https://api.blocky402.com` (`hedera:mainnet`, fee payer
 pointed at it.
 
 **Live endpoint:** `https://speculum.ochinimus.app`
+**Audit topic:** `0.0.10422195` on Hedera testnet, publicly readable.
 
 | | |
 |---|---|
@@ -171,8 +172,8 @@ with keys read at prompts, never as arguments: `./hedera/run.sh`.
 Hosted, on the box behind `speculum.ochinimus.app`: `/opt/speculum` is a clone
 of this repository, `npm ci --omit=dev --ignore-scripts`, PM2 process
 `speculum` on port 3027 started with `--node-args="--env-file=/opt/speculum/.env"`
-so the env file is read at every start. Adding the three audit variables to
-that file and cycling the process turns the trail on.
+so the env file is read at every start. The three audit variables are in
+that file and the trail is on.
 
 ## What is verified
 
@@ -213,21 +214,55 @@ facilitator, re-read from the mirror node on Sep 8 2026:
 
 The agent paid to be told no about its own transaction.
 
-## What is not yet observed
+## What was observed
 
-Stated here so nobody reads it off the code as done:
+The divergence run completed against `https://speculum.ochinimus.app` on
+Sep 8 2026 with the audit trail on. Every figure below was read back off the
+public testnet mirror node, not off the agent's own output.
 
-- **The divergence run against the live endpoint.** `agent.js` now buys two
-  checks: an exact approval that matches, and an unlimited approval declared
-  as exact, which the engine blocks on `UNBOUNDED_APPROVAL` and
-  `AMOUNT_EXCEEDS_INTENT`. Offline, the engine does exactly that (see
-  `test/compare.test.js`). The paid run against `speculum.ochinimus.app` needs
-  the agent's key, which the owner holds; its two settlement references and
-  HCS sequence numbers belong here once it has run.
-- **The audit topic.** No topic exists yet for either account (mirror node,
-  Sep 8 2026). `npm run topic` creates it with the operator key. Until the
-  hosted service has the three audit variables, `GET /health` answers
-  `audit.hcs: false`, which is the truth.
+Audit topic `0.0.10422195`, memo `speculum verdicts`, auto-renew account
+`0.0.10386821`, created at consensus `1788873576.556111066`. It has no submit
+key, so anyone can read it while only the service's operator writes to it.
+
+The agent, account `0.0.10422368`, bought two decode-tier checks at 100,000
+tinybar (0.001 HBAR) each, paid to `0.0.10386821`. Both payments settled
+through the Blocky402 facilitator, whose fee payer `0.0.7162784` carried the
+network fee of 250,094 tinybar on each.
+
+| the agent said / the bytes did | verdict | settlement | ledger | HCS |
+|---|---|---|---|---|
+| approve exactly 100 USDC / approve exactly 100 USDC | `PASS`, match, no findings | `0.0.7162784@1788874527.034251033` | `CRYPTOTRANSFER SUCCESS` at `1788874534.791406183` | `#1` at `1788874536.219819514` |
+| approve exactly 100 USDC / approve unlimited USDC | `BLOCK`, divergence, `UNBOUNDED_APPROVAL`, `AMOUNT_EXCEEDS_INTENT` | `0.0.7162784@1788874531.474869153` | `CRYPTOTRANSFER SUCCESS` at `1788874538.516692055` | `#2` at `1788874539.641386391` |
+
+The agent proceeded on the first and refused to sign the second.
+
+Both records carry the **same** `intentHash`:
+
+```
+0xba1f1e935187296d288ae25e4704ce9a714e9b16c210a581c58d43f3c0cce1ec
+```
+
+and **different** `deedHash` values, `0x26ac208bf6a45aabfc45e20ccc33c14e3d91cb4b6b04bde3cb42c5e7434eb1dd`
+for the exact approval and `0x52be96a810e035a4933d896ac39cce25278c8681a9600800a6943ff93632c850`
+for the unlimited one. That is the project's thesis in two rows on a public
+ledger: the declaration was identical, the bytes were not, and only the
+comparison could tell them apart.
+
+Anyone can read the trail, with no key and no account:
+
+```
+node hedera/audit-verify.js 0.0.10422195
+```
+
+On Sep 8 2026 that fetched both records, fetched both settlements from the
+ledger, and printed `2 record(s), 2 hold, 0 do not`. Or straight from the
+mirror node, where each `message` is the base64 of the JSON record:
+
+```
+curl https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10422195/messages
+```
+
+The hosted service answers `audit.hcs: true` with that topic on `GET /health`.
 
 ### What the first attempt taught
 

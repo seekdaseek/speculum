@@ -279,3 +279,15 @@ account id had come from different rows of the portal — a swap no encoding
 change could have fixed.
 
 `hedera/probe-key.js` is kept for that reason. It prints public keys only.
+
+The same probe settled the matter for good on Sep 8 2026. Run against the
+original agent account `0.0.10387590` before the live run, it reported no
+match under any parse: the key in hand belonged to no encoding of that
+account's key at all. Re-encoding was never going to fix that, so the account
+was abandoned rather than worked around. A fresh ECDSA account, `0.0.10422368`,
+was created from the operator and funded with 20 HBAR; the probe reports a
+match under `fromStringECDSA` for it, both settlements above are debited from
+it, and the mirror node shows it holding 19.998 HBAR after the two payments.
+The Sep 6 settlement from `0.0.10387590` stands on the ledger regardless; that
+account is simply no longer used. The finding got sharper, not weaker: the
+probe does not just pick an encoding, it can prove there is none to pick.

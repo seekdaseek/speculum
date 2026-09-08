@@ -173,17 +173,26 @@ Sep 8 2026. The agent had declared it was sending 100 USDC to itself; the
 calldata sent it elsewhere; the verdict was `BLOCK` on `RECIPIENT_MISMATCH`.
 The agent paid to be told no about its own transaction.
 
-**Audit trail.** Every paid verdict is written to a Hedera Consensus Service
-topic: the intent hash, the deed hash, the verdict, the finding codes, and the
-settlement that paid for it. `node hedera/audit-verify.js 0.0.<topic>` reads
-the topic from the public mirror node and checks each settlement against the
-ledger, with no key and no account. The hosted service reports
-`audit.hcs: false` until an operator key and a topic are configured; that is
-the owner's step, it has not happened yet, and nothing here claims a topic
-that does not exist. The same goes for the divergence run the agent now
-performs, an unlimited approval declared as exact: the engine blocks it
-offline in the tests, and the paid run against the live endpoint waits on the
-agent's key.
+**Audit trail.** Every paid verdict is written to Hedera Consensus Service
+topic `0.0.10422195`: the intent hash, the deed hash, the verdict, the finding
+codes, and the settlement that paid for it. The topic has no submit key, so
+anyone can read it. `node hedera/audit-verify.js 0.0.10422195` fetches every
+record from the public mirror node and checks each settlement against the
+ledger, with no key and no account; on Sep 8 2026 it reported 2 records, 2
+hold, 0 do not. The hosted service answers `audit.hcs: true` with that topic
+on `GET /health`.
+
+**The divergence run**, against the live endpoint on Sep 8 2026, agent
+`0.0.10422368`, two decode checks at 100,000 tinybar each, every figure read
+back off the mirror node. An exact 100 USDC approval declared as exact
+settled at `0.0.7162784@1788874527.034251033`, passed, and is HCS record `#1`.
+An unlimited approval declared as exactly 100 USDC settled at
+`0.0.7162784@1788874531.474869153`, blocked on `UNBOUNDED_APPROVAL` and
+`AMOUNT_EXCEEDS_INTENT`, and is HCS record `#2`. The agent signed the first
+and refused the second. The two records share one `intentHash` and differ in
+`deedHash`: the same words, different bytes, and only the comparison could
+tell. The full hashes and consensus timestamps are in
+[hedera/README.md](hedera/README.md#what-was-observed).
 
 Setup, architecture, the wire-level flow and the list of what has and has not
 been observed are in [hedera/README.md](hedera/README.md). The brief this was

@@ -17,7 +17,7 @@ pointed at it.
 
 | | |
 |---|---|
-| `GET /` | service descriptor: what it does, what it costs, network, facilitator, audit topic |
+| `GET /` | service descriptor: what it does, what it costs, network, facilitator, audit topic. JSON unless the `Accept` header prefers `text/html`, in which case the same descriptor is rendered as one self-contained page, so the Live Demo button lands a person on something readable while agents keep the bytes they parse |
 | `GET /health` | liveness, plus whether the audit trail is on |
 | `POST /check` | the gate. 402 without payment, the verdict with it |
 
@@ -65,6 +65,8 @@ Files:
 - `server.js` — the gated service. Quotes, verifies, settles, then runs the
   existing engine (`src/gate.js` → `src/compare.js` → `src/decode.js`)
   untouched. Holds no payment key.
+- `landing.js` — the descriptor object, the `Accept` negotiation, and the page
+  rendered from that object. No script, no framework, nothing fetched.
 - `agent.js` — the consumer. Discovers, gets a 402, pays, retries, acts.
 - `verdict.js` — the vocabulary: PASS/BLOCK/REFUSE ↔ match/divergence/undeterminable, and the derived effects as plain JSON.
 - `audit.js` — the HCS record, the writer, and the mirror-node reader.

@@ -4,7 +4,7 @@
   "description": "Checks whether an AI agent declared intent matches the transaction it is about to sign",
   "main": "index.js",
   "scripts": {
-    "test": "node test/compare.test.js && node test/onchain.test.js && node test/simulate.test.js && node test/gate.test.js && node test/history.test.js && node test/audit.test.js",
+    "test": "node test/compare.test.js && node test/onchain.test.js && node test/simulate.test.js && node test/gate.test.js && node test/history.test.js && node test/audit.test.js && node test/landing.test.js",
     "compile": "node bin/compile.js",
     "deploy": "node bin/deploy.js",
     "demo": "node bin/demo.js",

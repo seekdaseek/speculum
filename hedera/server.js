@@ -25,6 +25,7 @@ import { jsonRpc } from '../src/simulate.js';
 import { HBAR_ASSET_ID, HEDERA_TESTNET_CAIP2 } from '@x402/hedera';
 import { outcomeOf, effectsOf, plain } from './verdict.js';
 import { HcsAudit, auditRecord, MIRROR } from './audit.js';
+import { describe, prefersHtml, renderPage } from './landing.js';
 
 const FACILITATOR = process.env.FACILITATOR ?? 'https://api.testnet.blocky402.com';
 const PAY_TO = process.env.HEDERA_ACCOUNT_ID;
@@ -94,26 +95,20 @@ const auditDescriptor = () =>
     : { hcs: false, reason: 'set HEDERA_OPERATOR_ID, HEDERA_OPERATOR_KEY and HEDERA_TOPIC_ID' };
 
 // Service descriptor, so an agent can find out what this is and what it costs
-// before spending anything.
-app.get('/', async (_req, res) => {
-  res.json({
-    service: 'speculum',
-    what: 'checks whether a declared intent matches the transaction about to be signed',
-    endpoint: 'POST /check',
-    payment: { protocol: 'x402', version: 2, network: HEDERA_TESTNET_CAIP2, facilitator: FACILITATOR },
-    pricing: {
-      unit: 'tinybar',
-      metered: true,
-      tiers: [
-        { tier: 'decode', amount: PRICES.decode.toString(), covers: 'decode and compare' },
-        { tier: 'simulated', amount: PRICES.simulated.toString(), covers: 'adds a live balance simulation' },
-      ],
-    },
-    verdicts: ['PASS', 'BLOCK', 'REFUSE'],
-    outcomes: ['match', 'divergence', 'undeterminable'],
+// before spending anything. A browser asking for HTML gets the same facts as
+// a page; everything else gets the JSON agents have always parsed, unchanged.
+// The response varies on Accept, and says so for any cache in front.
+app.get('/', async (req, res) => {
+  const descriptor = describe({
+    network: HEDERA_TESTNET_CAIP2,
+    facilitator: FACILITATOR,
+    prices: PRICES,
     audit: auditDescriptor(),
     source: 'https://github.com/seekdaseek/speculum',
   });
+  res.set('Vary', 'Accept');
+  if (prefersHtml(req.get('Accept'))) return res.type('html').send(renderPage(descriptor));
+  res.json(descriptor);
 });
 
 app.get('/health', (_req, res) => {

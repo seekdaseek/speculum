@@ -17,3 +17,7 @@ push*.sh
 catchup.sh
 
 .DS_Store
+
+# Local scratch, never part of the project.
+finish.sh
+*.db

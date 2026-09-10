@@ -540,10 +540,24 @@ SERVICE=https://speculum.ochinimus.app HEDERA_ACCOUNT_ID=0.0.<agent> HEDERA_PRIV
 
 ## AI attribution
 
-Claude Code wrote most of the code in this repository: the decoder, the
-comparison engine, the simulation layer, the gate, the Solidity contract, the
-subgraph schema and mappings, the probes, and the tests. That includes this
-file.
+Most of the code here was written by Claude, but by two different routes, and
+which one produced a file is recoverable from `git log`. The engine and
+everything around it came from a chat session and reached the repository as
+source archives, which the owner extracted, ran the tests on, and pushed with a
+script: `src/types.js`, `src/decode.js`, `src/compare.js`, `src/simulate.js`,
+`src/gate.js`, `src/onchain.js`, `contracts/Speculum.sol`, the subgraph schema,
+manifest, ABI and mappings, the four original test files, and `bin/compile.js`,
+`bin/deploy.js`, `bin/probe-rpc.js` and `bin/probe-ledger.js`. Every one of
+those first appears in a Sep 5 commit. Claude Code wrote the later rounds
+directly in this working tree: the history layer and its policy
+(`src/history.js`, `src/policy.js`, `src/subgraph.js`, `src/deployment.js`),
+the signed-override path and `bin/release.sh`, the Hedera x402 service, paying
+agent and HCS audit trail under `hedera/`, the landing page, `bin/demo.js`,
+`bin/verify.js`, the later probes, and the tests for all of it. It also edited
+the Sep 5 files in place, including multicall recursion in the decoder, the
+batch comparison, the device signature in the contract and the gate, and the
+subgraph fields that index it. This file began on the chat route and has been
+rewritten by Claude Code many times since.
 
 What that did not cover is everything that made the claims in it true.
 

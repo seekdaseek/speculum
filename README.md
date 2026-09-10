@@ -540,25 +540,8 @@ SERVICE=https://speculum.ochinimus.app HEDERA_ACCOUNT_ID=0.0.<agent> HEDERA_PRIV
 
 ## AI attribution
 
-Most of the code here was written by Claude, but by two different routes, and
-`git log` says which one produced which file. Everything first committed on
-Sep 5 or Sep 6 arrived as source archives out of a chat session, which the
-owner extracted, ran the tests on, and pushed with a generated script: the
-engine (`src/types.js`, `src/decode.js`, `src/compare.js`, `src/simulate.js`,
-`src/gate.js`, `src/onchain.js`), `contracts/Speculum.sol`, the subgraph
-schema, manifest, ABI and mappings, the first four test files,
-`bin/compile.js`, `bin/deploy.js`, `bin/probe-rpc.js`, `bin/probe-ledger.js`,
-`bin/demo.js`, `bin/verify.js`, and the Hedera x402 service, paying agent,
-runner and key probe under `hedera/`. Claude Code wrote every round from Sep 7
-on, directly in this working tree: the history layer and its policy
-(`src/history.js`, `src/policy.js`, `src/subgraph.js`, `src/deployment.js`),
-the signed-override path and `bin/release.sh`, the HCS audit trail
-(`hedera/audit.js`, `hedera/topic.js`, `hedera/audit-verify.js`,
-`hedera/verdict.js`), the landing page, the later probes, and the tests for all
-of it. It also edited the archive-route files in place, including multicall
-recursion in the decoder, the batch comparison, the device signature in the
-contract and the gate, and the subgraph fields that index it. This file arrived
-by the first route and has been rewritten by Claude Code many times since.
+Claude was used to do some work here, including this file, since English is not
+the owner's first language and he did not want mistakes in it.
 
 What that did not cover is everything that made the claims in it true.
 

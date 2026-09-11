@@ -610,7 +610,7 @@ Sep 7 to 9, Claude Code working from a written brief, each brief committed
 verbatim:
 
 - [docs/BRIEF-multicall-simulation.md](docs/BRIEF-multicall-simulation.md), Sep 7: the multicall leg recursion in `src/decode.js` and `src/compare.js`, the batch tests in `test/compare.test.js`, and `bin/probe-sim.js`. One follow-up instruction the same day extended it to the second multicall selector, the V3 SwapRouter form without a deadline.
-- [docs/BRIEF-graph-history.md](docs/BRIEF-graph-history.md) and [docs/BRIEF-signed-overrides.md](docs/BRIEF-signed-overrides.md), both Sep 7: `src/history.js`, `src/subgraph.js`, `src/policy.js`, `src/deployment.js`, `bin/probe-history.js`, `bin/probe-override.js`, `test/history.test.js`, and the override path in `contracts/Speculum.sol`.
+- [docs/BRIEF-graph-history.md](docs/BRIEF-graph-history.md) and [docs/BRIEF-signed-overrides.md](docs/BRIEF-signed-overrides.md), both Sep 7: `src/history.js`, `src/subgraph.js`, `src/policy.js`, `src/deployment.js`, `bin/release.sh`, `bin/probe-history.js`, `bin/probe-override.js`, `test/history.test.js`, the override path in `contracts/Speculum.sol`, and the override run added to `bin/demo.js`.
 - [hedera/BRIEF.md](hedera/BRIEF.md), Sep 8: `hedera/verdict.js`, `hedera/audit.js`, `hedera/audit-verify.js`, `hedera/topic.js`, `test/audit.test.js`, and the paid path in `hedera/server.js`.
 - [BRIEF.md](BRIEF.md), Sep 9: `hedera/landing.js`, `test/landing.test.js`, and the content negotiation in `hedera/server.js`.
 

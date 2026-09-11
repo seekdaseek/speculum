@@ -538,6 +538,26 @@ HEDERA_ACCOUNT_ID=0.0.<service> npm run serve
 SERVICE=https://speculum.ochinimus.app HEDERA_ACCOUNT_ID=0.0.<agent> HEDERA_PRIVATE_KEY=0x<ecdsa> npm run agent
 ```
 
+## What is new and what is reused
+
+Everything in `src/`, `contracts/`, `hedera/`, `bin/`, `subgraph/src/` and
+`test/` was written during ETHOnline, first commit Sep 5 2026. Nothing here
+predates the event and nothing extends an earlier project. No starter kit or
+boilerplate was used.
+
+What is reused is third party and public, all of it installed from npm rather
+than copied into the tree:
+
+- `viem` 2.56 for ABI encoding and decoding and for the RPC calls
+- `express` 5.2 for the HTTP surface of the paid service
+- `@x402/hedera` 2.25 for the payment challenge and the client signer
+- `@hiero-ledger/sdk` 2.85 for the consensus topic and the ledger queries
+- `@ledgerhq/hw-app-eth` 7.8 and `@ledgerhq/hw-transport-node-hid` 6.33 for the hardware signing path
+- `solc` 0.8.36 for compiling the contract
+- `@graphprotocol/graph-cli` 0.97 and `@graphprotocol/graph-ts` 0.38 for the subgraph
+
+`package.json` and `subgraph/package.json` are the complete list.
+
 ## AI attribution
 
 Claude was used to do some work here, including this file, since English is not

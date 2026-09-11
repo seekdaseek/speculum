@@ -4,9 +4,10 @@ The brief this round of work was built against, kept verbatim because ETHGlobal
 asks that spec files and prompts be in the repository when AI tooling is used.
 Received Sep 9, 2026.
 
-Every brief in this repository, in the order the rounds ran: [the Graph history
+Every brief in this repository, in the order the rounds ran: [multicall legs and
+the live simulation](docs/BRIEF-multicall-simulation.md), [the Graph history
 layer](docs/BRIEF-graph-history.md) and [signed device
-overrides](docs/BRIEF-signed-overrides.md), both Sep 7; [the Hedera x402
+overrides](docs/BRIEF-signed-overrides.md), all three Sep 7; [the Hedera x402
 gate](hedera/BRIEF.md), Sep 8; this one, Sep 9; and [the attribution and reuse
 sections](docs/BRIEF-attribution.md), Sep 11.
 

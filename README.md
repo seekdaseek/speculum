@@ -590,6 +590,36 @@ The division worth stating plainly: the model drafted, the owner directed,
 executed and verified. Where those two disagreed, verification won, and this
 file was rewritten several times because of it.
 
+### Which files, and by which route
+
+Two routes were used and they split by date.
+
+Sep 5 and 6, drafted from chat transcripts rather than an agent working inside
+the repository, so no brief file exists for those rounds: `src/types.js`,
+`src/decode.js`, `src/compare.js`, `src/gate.js`, `src/onchain.js`,
+`src/simulate.js`, `contracts/Speculum.sol`, the first subgraph in
+`subgraph/schema.graphql`, `subgraph/src/mapping.ts` and
+`subgraph/subgraph.yaml`, the tests written beside them in
+`test/compare.test.js`, `test/gate.test.js`, `test/onchain.test.js` and
+`test/simulate.test.js`, the tooling in `bin/compile.js`, `bin/deploy.js`,
+`bin/demo.js`, `bin/verify.js`, `bin/probe-ledger.js` and `bin/probe-rpc.js`,
+and the first versions of `hedera/server.js`, `hedera/agent.js`,
+`hedera/probe-key.js` and `hedera/run.sh`.
+
+Sep 7 to 9, Claude Code working from a written brief, each brief committed
+verbatim:
+
+- [docs/BRIEF-graph-history.md](docs/BRIEF-graph-history.md) and [docs/BRIEF-signed-overrides.md](docs/BRIEF-signed-overrides.md), both Sep 7: `src/history.js`, `src/subgraph.js`, `src/policy.js`, `src/deployment.js`, `bin/probe-history.js`, `bin/probe-override.js`, `bin/probe-sim.js`, `test/history.test.js`, and the override path in `contracts/Speculum.sol`.
+- [hedera/BRIEF.md](hedera/BRIEF.md), Sep 8: `hedera/verdict.js`, `hedera/audit.js`, `hedera/audit-verify.js`, `hedera/topic.js`, `test/audit.test.js`, and the paid path in `hedera/server.js`.
+- [BRIEF.md](BRIEF.md), Sep 9: `hedera/landing.js`, `test/landing.test.js`, and the content negotiation in `hedera/server.js`.
+
+This file was drafted by the model throughout and rewritten by hand whenever a
+claim in it failed verification.
+
+What no route produced: the probe results, the device presses, the deployments,
+the funded accounts and every number recorded above. Each came from running the
+thing.
+
 ## Licence
 
 MIT

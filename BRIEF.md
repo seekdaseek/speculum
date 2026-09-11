@@ -7,7 +7,8 @@ Received Sep 9, 2026.
 Every brief in this repository, in the order the rounds ran: [the Graph history
 layer](docs/BRIEF-graph-history.md) and [signed device
 overrides](docs/BRIEF-signed-overrides.md), both Sep 7; [the Hedera x402
-gate](hedera/BRIEF.md), Sep 8; and this one, Sep 9.
+gate](hedera/BRIEF.md), Sep 8; this one, Sep 9; and [the attribution and reuse
+sections](docs/BRIEF-attribution.md), Sep 11.
 
 ---
 

@@ -526,6 +526,24 @@ bytes.
 
 ## Run it
 
+The fastest look at what this does, and the only command here that needs
+nothing at all: no keys, no RPC endpoint, no chain, no network access.
+
+```
+npm install
+npm run try
+```
+
+It puts six transactions through the same decoder and comparator the paid
+service runs on, and prints, for each one, what the agent declared, what the
+bytes actually do, the verdict, and every reason behind it. One case is a
+multicall batch where a single leg decides the whole batch and is named by its
+index. Nothing is mocked and no verdict is written down in advance:
+`test/try.test.js` pins each one, so a rule change in the engine breaks a test
+rather than quietly changing what a reader is shown.
+
+The test suite, also offline:
+
 ```
 npm install
 npm test

@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node test/compare.test.js && node test/onchain.test.js && node test/simulate.test.js && node test/gate.test.js && node test/history.test.js && node test/audit.test.js && node test/landing.test.js",
+    "try": "node bin/try.js",
     "compile": "node bin/compile.js",
     "deploy": "node bin/deploy.js",
     "demo": "node bin/demo.js",
